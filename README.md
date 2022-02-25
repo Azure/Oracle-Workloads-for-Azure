@@ -2,11 +2,25 @@
 
 This repository contains sub-folders representing multiple separate projects...
 
-- az-oracle-sizing
-- azbackup
-- oravm
-- oradg
-- orapcs
+### 1. az-oracle-sizing
+This project documents the method of sizing on-prem Oracle Database workloads for initial migration into Azure.  Too often, people capture the number of CPUs, amount of RAM, and quantity of storage configured to the on-prem infrastructure, and then they configure Azure resources based on those metrics.  Unfortunately, they don't know if the database was using all or just some of those allocated resources.  We focus on capturing actual observed information for:
+1) observed CPU utilization
+2) observed memory utilization
+3) observed I/O utilization
+
+...from standard Oracle AWR (automatic workload repository) reports, preferably generated during peak workload periods.  This project consists of documentation in PDF form, a sample MS-Excel spreadsheet for capturing the metrics needed from Oracle AWR reports.  The spreadsheet has two worksheets, the first to capture AWR information, and the second to generate estimates for choosing compute and storage resources from Azure.  This repository also holds an Oracle SQL\*Plus script named "dbspace.sql" which can be used to capture information not included in AWR reports, such as database size, table compression, volume of full and incremental RMAN backups, and daily volume of archived redo logs.
+
+### 2. azbackup
+This project relates to app-consistent Oracle database backups using Azure Backup.  Present is a bash-shell script for troubleshooting and training videos for configuring and restoring VMs supporting one or more Oracle database workloads.
+
+### 3. oravm
+This project contains an "accelerator" script for automating the creation of a single VM with a running Oracle database with integration to Azure Backup configured.  The bash-shell script "cr_oravm.sh" requires a subscription and a resource group as prerequisites, and within the resource group it builds a virtual net, a subnet, a network security group, as well as a VM with a NIC, public IP address, and storage using either premium SSD or Azure NetApp Files.  All is built automatically in about 30-35 minutes.  For more detailed information, please refer to the README within the folder.
+
+### 4. oradg
+This project contains an "accelerator" script for automating the creation of an Oracle DataGuard primary and standby database, each on separate VMs in separate availability zones, as well as a third VM with the Oracle DataGuard Broker observer.  The bash-shell script "cr_oradg.sh" requires a subscription and a resource group as prerequisites, and within the resource group it builds a virtual net, a subnet, a network security group, as well as three VMs with NICs, public IP addresses, and storage using premium SSD.  Everything is built automatically in about 40 minutes.  For more detailed information, please refer to the README within the folder.
+
+### 5. orapcs
+This project contains an "accelerator" script for automating the creation of Linux Pacemaker/Corosync (PCS) HA cluster for an Oracle database, with a database on shared storage maintained by two VMs within the same availability set and proximity placement group in a single availability zone, as well as a third VM intended as an observer.  The bash-shell script "cr_orapcs.sh" requires a subscription and a resource group as prerequisites, and within the resource group it builds a virtual net, a subnet, a network security group, as well as three VMs with NICs, public IP addresses, and storage using premium SSD.  Everything is built automatically in about 40 minutes.  For more detailed information, please refer to the README within the folder.
 
 ## Contributing
 
