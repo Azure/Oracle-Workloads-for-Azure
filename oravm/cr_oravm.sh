@@ -99,7 +99,7 @@
 #       TGorman 15jun20 v0.2    various bug fixes
 #       TGorman 16jun20 v0.3    move TEMP to temporary/ephemeral disk
 #       TGorman 22jun20         fix OsDisk Caching typo
-#       SLuce and TGorman 22jun20 v0.4  add Azure NetApp Files (ANF) storage
+#       SLuce and TGorman 22jun20 v0.4    add Azure NetApp Files (ANF) storage
 #       TGorman 18aug20 v0.5    fix minor issues
 #       TGorman 24aug20 v0.6    fix major issues for v0.5
 #       TGorman 17nov20 v0.7    update to default 19c VM image from marketplace
