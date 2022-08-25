@@ -189,5 +189,4 @@ If you remove all the entries for Oracle Linux standalone and Oracle WebLogic, l
     Oracle-Database-Se    Oracle       12.2.0.1                 Oracle:Oracle-Database-Se:12.2.0.1:12.2.20180725            12.2.20180725
     Oracle-Database-Se    Oracle       18.3.0.0                 Oracle:Oracle-Database-Se:18.3.0.0:18.3.20181213            18.3.20181213
 
-Reminder: the URN value is what the "cr_oravm.sh" script expects as a value for the "-u" switch, just FYI?
-# ora-vm
+Reminder: the URN value (shown above) is what the "cr_oravm.sh" script expects as a value for the "-u" switch, just FYI?
