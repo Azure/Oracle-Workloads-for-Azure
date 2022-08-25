@@ -1373,7 +1373,7 @@ whenever oserror exit failure
 whenever sqlerror exit failure
 variable fcsize varchar2(32)
 begin
-        select to_char((to_number(value)/1024)*4)||'K' into :fcsize from v$parameter where name = 'sga_max_size';
+        select to_char((to_number(value)/1024)*4)||'K' into :fcsize from v\$parameter where name = 'sga_max_size';
 end;
 /
 begin
