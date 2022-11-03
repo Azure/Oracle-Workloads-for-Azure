@@ -66,13 +66,14 @@
 #       TGorman 14feb22 v0.1    written
 #       TGorman 12oct22 v0.2    added 18c as a tested version
 #       TGorman 31oct22 v0.3    fixed special conditions for 12.2.0.1.0 and 18c
-#                               and added header labels with date and version
+#       TGorman 02nov22 v0.4    fixed newly-introduced bug for 19c
+#       TGorman 03nov22 v0.5    fixed text-based RAC AWR report
 #================================================================================
 #
 #--------------------------------------------------------------------------------
 # Set global environment variables with default values...
 #--------------------------------------------------------------------------------
-_progVersion="0.3"
+_progVersion="0.5"
 #
 for _file in `ls -1 *.html 2> /dev/null`
 do
@@ -159,7 +160,6 @@ do
                                 _readMBPS=`echo "${_line}" | awk -F~ '{print $9}' | sed 's/[ ,]//g'`
                                 _writeMBPS=`echo "${_line}" | awk -F~ '{print $21}' | sed 's/[ ,]//g'`
                         else
-
                                 _line=`grep "^<tr><td align=\"right\" scope=\"row\" class='awr.*'>${_instNbr}</td><td .*Total\"" ${_file} | sed 's/[<>]/~/g' | tail -1`
                                 if [[ "${_line}" != "" ]]
                                 then
@@ -170,17 +170,11 @@ do
                                                 _readMBPS=`echo "${_line}" | awk -F~ '{print $37}' | sed 's/[ ,]//g'`
                                                 _writeMBPS=`echo "${_line}" | awk -F~ '{print $41}' | sed 's/[ ,]//g'`
                                         else
-                                                _readIOPS=`echo "${_line}" | awk -F~ '{print $37}' | sed 's/[ ,]//g'`
-                                                _writeIOPS=`echo "${_line}" | awk -F~ '{print $49}' | sed 's/[ ,]//g'`
-                                                _readMBPS=`echo "${_line}" | awk -F~ '{print $13}' | sed 's/[ ,]//g'`
-                                                _writeMBPS=`echo "${_line}" | awk -F~ '{print $21}' | sed 's/[ ,]//g'`
+                                                _readIOPS=`echo "${_line}" | awk -F~ '{print $21}' | sed 's/[ ,]//g'`
+                                                _writeIOPS=`echo "${_line}" | awk -F~ '{print $25}' | sed 's/[ ,]//g'`
+                                                _readMBPS=`echo "${_line}" | awk -F~ '{print $37}' | sed 's/[ ,]//g'`
+                                                _writeMBPS=`echo "${_line}" | awk -F~ '{print $41}' | sed 's/[ ,]//g'`
                                         fi
-                                else
-                                        _line=`grep "^<tr><td align=\"right\" scope=\"row\" class='awr.*'>${_instNbr}</td><td class='awr.*'>Total</td>" ${_file} | sed 's/[<>]/~/g' | tail -1`
-                                        _readIOPS=`echo "${_line}" | awk -F~ '{print $21}' | sed 's/[ ,]//g'`
-                                        _writeIOPS=`echo "${_line}" | awk -F~ '{print $25}' | sed 's/[ ,]//g'`
-                                        _readMBPS=`echo "${_line}" | awk -F~ '{print $37}' | sed 's/[ ,]//g'`
-                                        _writeMBPS=`echo "${_line}" | awk -F~ '{print $41}' | sed 's/[ ,]//g'`
                                 fi
                         fi
                         #
@@ -367,33 +361,87 @@ done
 for _file in `ls -1 *.txt 2> /dev/null`
 do
         _dbName=$(grep -A2 "DB Name" ${_file} | tail -n1 | awk '{print $1}' | sed 's/,//g')
-        _dbInstName=$(grep -A2 "Instance" ${_file} | head -n3 | awk '{print $1}' | tail -n1 | sed 's/,//g')
-        _hostName=$(grep -A2 "Host Name" ${_file} | tail -n1 | awk '{print $1}' | sed 's/,//g')
-        _elaTime=$(grep -A2 "Elapsed" ${_file}| head -n1 | awk '{print $2}' | sed 's/,//g')
-        _dbTime=$(grep -A2 "DB Time" ${_file} | head -n1 | awk '{print $3}' | sed 's/,//g')
-        _dbCpu=$(grep -A2 "DB CPU time" ${_file} | tail -n3 | awk '{print $11}' | sed 's/,//g')
-        _CPUs=$(grep -A2 "CPUs" ${_file} | head -n3 | tail -n1 | awk '{print $(NF-3)}' | sed 's/,//g')
-        _cores=$(grep -A2 "Cores" ${_file} | head -n3 | tail -n1 | awk '{print $(NF-2)}' | sed 's/,//g')
-        _memory=$(grep -A2 "Memory" ${_file} | head -n3 | tail -n1 | awk '{print $NF}' | sed 's/,//g')
-        _pctBusy=$(grep -A2 "% of busy  CPU for Instance" ${_file} | head -n1 | awk '{print $7}' | sed 's/,//g')
-        _sgaUsed=$(grep -A2 "SGA use (MB):" ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
-        _pgaUsed=$(grep -A2 "PGA use (MB):" ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
-        _readMBPS=$(grep -A2 "  Total (MB): " ${_file} | head -n1 | awk '{print $4}' | sed 's/,//g')
-        _writeMBPS=$(grep -A2 "  Total (MB): " ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
-        _readIOPS=$(grep -A2 "  Total Requests: " ${_file} | head -n1 | awk '{print $4}' | sed 's/,//g')
-        _writeIOPS=$(grep -A2 "  Total Requests: " ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
-
-        if [[ "${_hdrPrinted}" = "" ]]
+        if [[ "${_dbName}" = "" ]]
         then
-                _hdrPrinted="true"
-                echo "Generated on `date '+%Y-%m-%d %H:%M:%S'` by script \"awr_capture.sh\" version ${_progVersion}" | tee fixed_output.csv
-                echo "DB Name,Instance Name,Hostname,Elapsed Time (mins),DB Time (mins),DB CPU(s),CPUs,Cores,Memory (GB),%busy CPU,SGA use(MB),PGA use(MB),Read Throughput (MB/s),Write Throughput (MB/s),Read IOPS,Write IOPS " | tee -a fixed_output.csv
+                _dbName=$(grep -A2 "Id Name      Unique Name Role" ${_file} | tail -n1 | awk '{print $2}' | sed 's/,//g')
         fi
+        _dbInstName=$(grep -A2 "Instance" ${_file} | head -n3 | awk '{print $1}' | tail -n1 | sed 's/,//g')
+        if [[ "${_dbInstName}" = "Id" ]]
+        then
+                _nbrInsts=$(grep -A4 "Number of Instances" ${_file} | head -n5 | awk '{print $11}' | tail -n1 | sed 's/,//g')
+                _dbInstNum=$(grep -A2 "I# Instance" ${_file} | head -n3 | awk '{print $1}' | tail -n1 | sed 's/,//g')
+                typeset -i _i=2
+                typeset -i _j=3
+                while (( ${_dbInstNum} <= ${_nbrInsts} ))
+                do
 
-        echo "$_dbName,$_dbInstName,$_hostName,$_elaTime,$_dbTime,$_dbCpu,$_CPUs,$_cores,$_memory,$_pctBusy,$_sgaUsed,$_pgaUsed,$_readMBPS,$_writeMBPS,$_readIOPS,$_writeIOPS" | tee -a fixed_output.csv
+                        _dbInstName=$(grep -A${_i} "I# Instance" ${_file} | head -n${_j} | awk '{print $2}' | tail -n1 | sed 's/,//g')
+                        _hostName=$(grep -A${_i} "I# Instance" ${_file} | head -n${_j} | awk '{print $3}' | tail -n1 | sed 's/,//g')
+                        _elaTime=$(grep -A${_i} "I# Instance" ${_file} | head -n${_j} | awk '{print $11}' | tail -n1 | sed 's/,//g')
+                        _dbTime=$(grep -A${_i} "I# Instance" ${_file} | head -n${_j} | awk '{print $12}' | tail -n1 | sed 's/,//g')
+                        _dbCpu=$(grep -A${_i} "DB CPU (s)" ${_file} | head -n${_j} | awk '{print $3}' | tail -n1 | sed 's/,//g')
+                        _CPUs=$(grep -A${_i} "#CPUs #Core #Sckt" ${_file} | head -n${_j} | awk '{print $2}' | tail -n1 | sed 's/,//g')
+                        _cores=$(grep -A${_i} "#CPUs #Core #Sckt" ${_file} | head -n${_j} | awk '{print $3}' | tail -n1 | sed 's/,//g')
+                        _memory=$(grep -A${_i} "#CPUs #Core #Sckt" ${_file} | head -n${_j} | awk '{print $15/1024}' | tail -n1 | sed 's/,//g')
+                        _pctBusy=$(grep -A${_i} "#CPUs #Core #Sckt" ${_file} | head -n${_j} | awk '{print $7}' | tail -n1 | sed 's/,//g')
+                        typeset -i _k=${_i}+2
+                        typeset -i _l=${_j}+2
+                        _sgaUsed=$(grep -A${_k} "Sga Target" ${_file} | head -n${_l} | awk '{print $2}' | tail -n1 | sed 's/,//g')
+                        _pgaUsedBegin=$(grep -A${_k} "PGA Mem Alloc" ${_file} | head -n${_l} | awk '{print $6}' | tail -n1 | sed 's/,//g')
+                        _pgaUsedEnd=$(grep -A${_k} "PGA Mem Alloc" ${_file} | head -n${_l} | awk '{print $7}' | tail -n1 | sed 's/,//g')
+                        _pgaUsed=$(echo ${_pgaUsedBegin} ${_pgaUsedEnd} | awk '{if($1<$2){print $2}else{print $1}}')
+                        _readMBPS=$(grep "${_dbInstNum} Total" ${_file} | tail -1 | awk '{print $9}' | sed 's/,//g')
+                        _writeMBPS=$(grep "${_dbInstNum} Total" ${_file} | tail -1 | awk '{print $10}' | sed 's/,//g')
+                        _readIOPS=$(grep "${_dbInstNum} Total" ${_file} | tail -1 | awk '{print $5}' | sed 's/,//g')
+                        _writeIOPS=$(grep "${_dbInstNum} Total" ${_file} | tail -1 | awk '{print $6}' | sed 's/,//g')
+
+                        if [[ "${_hdrPrinted}" = "" ]]
+                        then
+                                _hdrPrinted="true"
+                                echo "Generated on `date '+%Y-%m-%d %H:%M:%S'` by script \"awr_capture.sh\" version ${_progVersion}" | tee fixed_output.csv
+                                echo "DB Name,Instance Name,Hostname,Elapsed Time (mins),DB Time (mins),DB CPU(s),CPUs,Cores,Memory (GB),%busy CPU,SGA use(MB),PGA use(MB),Read Throughput (MB/s),Write Throughput (MB/s),Read IOPS,Write IOPS " | tee -a fixed_output.csv
+                        fi
+
+                        echo "$_dbName,$_dbInstName,$_hostName,$_elaTime,$_dbTime,$_dbCpu,$_CPUs,$_cores,$_memory,$_pctBusy,$_sgaUsed,$_pgaUsed,$_readMBPS,$_writeMBPS,$_readIOPS,$_writeIOPS" | tee -a fixed_output.csv
+
+                        typeset -i _i=${_i}+1
+                        typeset -i _j=${_j}+1
+                        _dbInstNum=$(grep -A${_i} "I# Instance" ${_file} | head -n${_j} | awk '{print $1}' | tail -n1 | sed 's/,//g')
+                        if [[ "${_dbInstNum}" = "" ]]
+                        then
+                                typeset -i _dbInstNum=${_nbrInsts}+999
+                        fi
+                done
+        else
+                _hostName=$(grep -A2 "Host Name" ${_file} | tail -n1 | awk '{print $1}' | sed 's/,//g')
+                _elaTime=$(grep -A2 "Elapsed" ${_file}| head -n1 | awk '{print $2}' | sed 's/,//g')
+                _dbTime=$(grep -A2 "DB Time" ${_file} | head -n1 | awk '{print $3}' | sed 's/,//g')
+                _dbCpu=$(grep -A2 "DB CPU time" ${_file} | tail -n3 | awk '{print $11}' | sed 's/,//g')
+                _CPUs=$(grep -A2 "CPUs" ${_file} | head -n3 | tail -n1 | awk '{print $(NF-3)}' | sed 's/,//g')
+                _cores=$(grep -A2 "Cores" ${_file} | head -n3 | tail -n1 | awk '{print $(NF-2)}' | sed 's/,//g')
+                _memory=$(grep -A2 "Memory" ${_file} | head -n3 | tail -n1 | awk '{print $NF}' | sed 's/,//g')
+                _pctBusy=$(grep -A2 "% of busy  CPU for Instance" ${_file} | head -n1 | awk '{print $7}' | sed 's/,//g')
+                _sgaUsed=$(grep -A2 "SGA use (MB):" ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
+                _pgaUsed=$(grep -A2 "PGA use (MB):" ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
+                _readMBPS=$(grep -A2 "  Total (MB): " ${_file} | head -n1 | awk '{print $4}' | sed 's/,//g')
+                _writeMBPS=$(grep -A2 "  Total (MB): " ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
+                _readIOPS=$(grep -A2 "  Total Requests: " ${_file} | head -n1 | awk '{print $4}' | sed 's/,//g')
+                _writeIOPS=$(grep -A2 "  Total Requests: " ${_file} | head -n1 | awk '{print $5}' | sed 's/,//g')
+
+                if [[ "${_hdrPrinted}" = "" ]]
+                then
+                        _hdrPrinted="true"
+                        echo "Generated on `date '+%Y-%m-%d %H:%M:%S'` by script \"awr_capture.sh\" version ${_progVersion}" | tee fixed_output.csv
+                        echo "DB Name,Instance Name,Hostname,Elapsed Time (mins),DB Time (mins),DB CPU(s),CPUs,Cores,Memory (GB),%busy CPU,SGA use(MB),PGA use(MB),Read Throughput (MB/s),Write Throughput (MB/s),Read IOPS,Write IOPS " | tee -a fixed_output.csv
+                fi
+
+                echo "$_dbName,$_dbInstName,$_hostName,$_elaTime,$_dbTime,$_dbCpu,$_CPUs,$_cores,$_memory,$_pctBusy,$_sgaUsed,$_pgaUsed,$_readMBPS,$_writeMBPS,$_readIOPS,$_writeIOPS" | tee -a fixed_output.csv
+        fi
 
         # Unset variables to empty for next run
         unset _dbName
+        unset _nbrInsts
+        unset _dbInstNum
         unset _dbInstName
         unset _hostName
         unset _elaTime
