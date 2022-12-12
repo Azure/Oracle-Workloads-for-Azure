@@ -44,22 +44,19 @@ REM                             instance restart...
 REM     TGorman 01jun21 v0.4    cleaned up some mistakes, parameterized
 REM     TGorman 09dec22 v0.5    changed query from using stats from DBA_HIST_SYSSTAT
 REM                             to using metrics from DBA_HIST_SYSMETRIC_HISTORY
+REM     TGorman 12dec22 v0.6    cleaned up snap IDs and times
 REM ================================================================================
 set pages 100 lines 180 verify off echo off feedback 6 timing off recsep off
 col instance_number format 90 heading 'I#'
-col begin_snap_id heading 'AWR|Begin|Snap ID'
-col end_snap_id heading 'AWR|Ending|Snap ID'
-col begin_tm format a20 heading 'AWR Snap|Beginning|time' word_wrap
-col end_tm format a20 heading 'AWR Snap|Ending|time' word_wrap
+col snap_id heading 'Beginning|Snap ID'
+col begin_tm format a20 heading 'Beginning|Snap Time' word_wrap
 col avg_value heading 'Average|IO and CPU|per second' format 999,999,990.0000
 define V_CPU_WEIGHT=1           /* multiplicative factor to favor/disfavor CPU metrics */
 define V_IO_WEIGHT=2            /* multiplicative factor to favor/disfavor I/O metrics */
-spool busiest_awr
+spool b
 select  x.instance_number,
-        x.snap_id begin_snap_id,
-        x.snap_id+1 end_snap_id,
-        to_char(s.begin_interval_time, 'DD-MON-YYYY HH24:MI:SS') begin_tm,
-        to_char(s.end_interval_time, 'DD-MON-YYYY HH24:MI:SS') end_tm,
+        x.snap_id snap_id,
+        to_char(s.end_interval_time, 'DD-MON-YYYY HH24:MI:SS') begin_tm,
         x.avg_value
 from    (select instance_number, snap_id, avg(value) avg_value, avg(sort_value) sort_value,
                 row_number() over (partition by instance_number order by avg(sort_value) desc) rn
