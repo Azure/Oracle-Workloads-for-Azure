@@ -34,6 +34,9 @@
  *      TGorman 30-Nov 2020     v1.2 - added queries on V$LOG/V$LOGFILE for redo
  *                                     group/member info
  *      TGorman 30-Nov 2020     v1.3 - added query with HCC recompression calcs
+ *      TGorman 03-Jan 2023     v1.4 - added boilerplate explanatory text and
+ *                                     summarized final two queries about archived
+ *                                     redo log data
  ********************************************************************************/
 set echo off feedback off timing off pagesize 100 linesize 130 trimout on trimspool on verify off
 define V_AH_RATIO="18"  -- compression ratio for ARCHIVE HIGH
@@ -43,11 +46,15 @@ define V_QL_RATIO="6"   -- compression ratio for QUERY LOW
 define V_B_RATIO="3"    -- compression ratio for BASIC/OLTP/ADVANCED
 col name new_value V_DBNAME noprint
 select name from v$database;
-set feedback on
 spool dbspace_&&V_DBNAME
 clear breaks computes
 break on report
 compute sum of mb on report
+
+prompt
+prompt Display database file structure sizes...
+prompt
+
 col type format a10 heading "File type"
 col mb format 999,999,990.00 heading "DB Size (MB)"
 select  type, sum(bytes)/1048576 mb
@@ -62,6 +69,11 @@ from    (select 'Datafile' type, bytes from dba_data_files
          select 'BCTfile' type, nvl(bytes,0) bytes from v$block_change_tracking)
 group by type
 order by type;
+
+prompt
+prompt Display information about data compression, including addl space needed
+prompt after recompression of HCC => advanced...
+prompt
 
 col segment_type heading "Segment Type"
 col compression heading "Enabled?"
@@ -155,6 +167,10 @@ group by s.segment_type,
          decode(x.status, 'ONLINE', null, x.status)
 order by 1, 2, 3, 4, 5 desc;
 
+prompt
+prompt Display information about online redo log files...
+prompt
+
 clear breaks computes
 break on thread# on group# on members on report
 col thread# heading "Thread"
@@ -172,10 +188,14 @@ group by thread#,
          members
 order by 1, 2, 3;
 
+prompt
+prompt Display information about RMAN backups...
+prompt
+
 col sort0 noprint
 col dbf_mb format 999,999,999,990.00 heading "Source|database|files (MB)"
 col day heading "Day"
-col backup_type format a4 heading "Bkup|Type"
+col backup_type format a7 heading "Bkup|Type"
 col incremental_level format 9990 heading "Incr|Lvl"
 col read_mb format 999,999,999,990.00 heading "Backup|read|(MB)"
 col bkp_mb format 999,999,999,990.00 heading "Database file|backup written|(MB)"
@@ -186,7 +206,7 @@ compute sum of read_mb on report
 compute sum of bkp_mb on report
 select  to_char(f.completion_time,'YYYYMMDD') sort0,
         to_char(f.completion_time,'DD-MON-YYYY') day,
-        s.backup_type,
+        decode(s.backup_type,'D','ArchLog','I','IncrBkp',s.backup_type) backup_type,
         s.incremental_level,
         sum(f.datafile_blocks*f.block_size)/1048576 dbf_mb,
         sum(f.blocks_read*f.block_size)/1048576 read_mb,
@@ -197,36 +217,45 @@ where   s.set_stamp = f.set_stamp
 and     s.set_count = f.set_count
 group by to_char(f.completion_time,'YYYYMMDD'),
          to_char(f.completion_time,'DD-MON-YYYY'),
-         s.backup_type,
+         decode(s.backup_type,'D','ArchLog','I','IncrBkp',s.backup_type),
          s.incremental_level
 order by sort0;
 
 clear breaks computes
-break on day on report
-compute avg of mb on report
-compute sum of mb on report
-col sort0 noprint
-col day heading "Day"
-col mb format 999,999,990.00 heading "Archived|redo Size (MB)"
-select  to_char(next_time,'YYYYMMDD') sort0,
-        to_char(next_time,'DD-MON-YYYY') day,
-        sum(blocks*block_size)/1048576 mb
-from    v$archived_log
-group by to_char(next_time,'YYYYMMDD'),
-         to_char(next_time,'DD-MON-YYYY')
-order by sort0;
+col nbrdays format 999,990 heading "# days"
+col avg_mb format 999,999,990.00 heading "Avg|(50th pctile)|Archived|redo Size (MB)"
+col x68pct_mb format 999,999,990.00 heading "Avg+1sd|(68th pctile)|Archived|redo Size (MB)"
+col x95pct_mb format 999,999,990.00 heading "Avg+2sd|(95th pctile)|Archived|redo Size (MB)"
+col x997pct_mb format 999,999,990.00 heading "Avg+3sd|(99.7th pctile)|Archived|redo Size (MB)"
+col max_mb format 999,999,990.00 heading "Max|(100th pctile)|Archived|redo Size (MB)"
 
-clear breaks computes
-break on day on report
-compute sum of mb on report
-col bkp_mb format 999,999,990.00 heading "Archived redo|backup written|(MB)"
-select  to_char(next_time,'YYYYMMDD') sort0,
-        to_char(next_time,'DD-MON-YYYY') day,
-        sum(blocks*block_size)/1048576 bkp_mb
-from    v$backup_redolog
-group by to_char(next_time,'YYYYMMDD'),
-         to_char(next_time,'DD-MON-YYYY')
-order by sort0;
+prompt
+prompt Display information from V$ARCHIVED_LOG...
+prompt
+select  count(*) nbrdays,
+        avg(mb) avg_mb,
+        avg(mb) + (1*stddev(mb)) x68pct_mb,
+        avg(mb) + (2*stddev(mb)) x95pct_mb,
+        avg(mb) + (3*stddev(mb)) x997pct_mb,
+        max(mb) max_mb
+from    (select to_char(next_time,'DD-MON-YYYY') day,
+                sum(blocks*block_size)/1048576 mb
+         from   v$archived_log
+         group by to_char(next_time,'DD-MON-YYYY'));
+
+prompt
+prompt Display information from V$BACKUP_REDOLOG...
+prompt
+select  count(*) nbrdays,
+        avg(mb) avg_mb,
+        avg(mb) + (1*stddev(mb)) x68pct_mb,
+        avg(mb) + (2*stddev(mb)) x95pct_mb,
+        avg(mb) + (3*stddev(mb)) x997pct_mb,
+        max(mb) max_mb
+from    (select to_char(next_time,'DD-MON-YYYY') day,
+                sum(blocks*block_size)/1048576 mb
+         from   v$backup_redolog
+         group by to_char(next_time,'DD-MON-YYYY'));
 
 clear breaks computes
 spool off
