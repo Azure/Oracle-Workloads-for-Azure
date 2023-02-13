@@ -39,6 +39,7 @@ REM     table named STATS$SYSSTAT, populated from the view V$SYSSTAT.
 REM
 REM Modifications:
 REM     TGorman 09jan23 v0.6    copied from script "busiest_awr.sql" v0.6
+REM     TGorman 13feb23 v0.7    bug fix, change DBA_HIST_SNAPSHOT to STATS$SNAPSHOT
 REM ================================================================================
 set pages 100 lines 180 verify off echo off feedback 6 timing off recsep off
 col instance_number format 90 heading 'I#'
@@ -71,7 +72,7 @@ from    (select instance_number, snap_id, avg_value,
                          where  lag_value is not null
                          group by instance_number, snap_id)
                  group by instance_number, snap_id)) x,
-        dba_hist_snapshot s
+        Stats$snapshot s
 where   s.snap_id = x.snap_id
 and     s.instance_number = x.instance_number
 and     s.dbid = (select dbid from v$database)
