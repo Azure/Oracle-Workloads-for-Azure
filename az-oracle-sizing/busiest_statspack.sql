@@ -51,7 +51,7 @@ define V_IO_WEIGHT=2            /* multiplicative factor to favor/disfavor I/O m
 spool b
 select  x.instance_number,
         x.snap_id snap_id,
-        to_char(s.end_interval_time, 'DD-MON-YYYY HH24:MI:SS') begin_tm,
+        to_char(s.snap_time, 'DD-MON-YYYY HH24:MI:SS') begin_tm,
         x.avg_value
 from    (select instance_number, snap_id, avg_value,
                 row_number() over (partition by instance_number order by avg_sort_value desc) rn
