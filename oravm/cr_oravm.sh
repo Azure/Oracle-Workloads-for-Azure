@@ -122,12 +122,13 @@
 #                               versions of Linux
 #       TGorman 01apr22 v1.6    added "--public-ip-sku Standard" to az vm create
 #       TGorman 24aug22 v1.7    added Oracle Flash Cache config to tempdisk
+#	TGorman	13mar23	v1.8	fixed problem in "sed" script found by Basim Majeed
 #================================================================================
 #
 #--------------------------------------------------------------------------------
 # Set global environment variables with default values...
 #--------------------------------------------------------------------------------
-_progVersion="1.7"
+_progVersion="1.8"
 _progName="cr_oravm"
 _outputMode="terse"
 _azureOwner="`whoami`"
@@ -1102,7 +1103,7 @@ else
         fi
 fi
 echo "`date` - INFO: configure waagent for ${_swapMB}M swap on ${_vmName}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr} "sudo sed -i.old -e 's/^ResourceDisk.EnableSwap=n$/ResourceDisk.EnableSwap=y/' -e 's/^ResourceDisk.SwapSizeMB=0$/ResourceDisk.SwapSizeMB='${_swapMB}'/' /etc/waagent.conf" >> ${_logFile} 2>&1
+ssh ${_azureOwner}@${_ipAddr} "sudo sed -i.old -e 's/^ResourceDisk.EnableSwap=n$/ResourceDisk.EnableSwap=y/' -e 's/^ResourceDisk.SwapSizeMB=.*$/ResourceDisk.SwapSizeMB='${_swapMB}'/' /etc/waagent.conf" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
         echo "`date` - FAIL: sudo sed /etc/waagent.conf on ${_vmName}" | tee -a ${_logFile}
         exit 1
