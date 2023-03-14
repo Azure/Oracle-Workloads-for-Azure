@@ -112,12 +112,13 @@
 #				values for primary and stdby...
 #	TGorman	11nov21	v1.1	added grub2 and dracut code for reboot and fixed
 #				other minor bugs...
+#	TGorman	13mar23	v1.2	place AZ GROUP EXISTS after AZ ACCOUNT SET command
 #================================================================================
 #
 #--------------------------------------------------------------------------------
 # Set global environment variables for the entire script...
 #--------------------------------------------------------------------------------
-_progVersion="v1.1"
+_progVersion="v1.2"
 _outputMode="terse"
 _azureOwner="`whoami`"
 _azureProject="oradg"
@@ -308,21 +309,21 @@ rm -f ${_logFile}
 echo "`date` - INFO: \"$0 $*\" ${_progVersion}, starting..." | tee -a ${_logFile}
 #
 #--------------------------------------------------------------------------------
-# Verify that the resource group exists...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: az group exists -n ${_rgName}..." | tee -a ${_logFile}
-if [[ "`az group exists -n ${_rgName}`" != "true" ]]; then
-	echo "`date` - FAIL: resource group \"${_rgName}\" does not exist" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
 # Set the default Azure subscription...
 #--------------------------------------------------------------------------------
 echo "`date` - INFO: az account set..." | tee -a ${_logFile}
 az account set -s "${_azureSubscription}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
 	echo "`date` - FAIL: az account set" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Verify that the resource group exists...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az group exists -n ${_rgName}..." | tee -a ${_logFile}
+if [[ "`az group exists -n ${_rgName}`" != "true" ]]; then
+	echo "`date` - FAIL: resource group \"${_rgName}\" does not exist" | tee -a ${_logFile}
 	exit 1
 fi
 #
