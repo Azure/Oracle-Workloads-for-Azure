@@ -112,13 +112,14 @@
 #	TGorman	26apr21 v1.0	set waagent.conf to rebuild swapfile after reboot,
 #				set default image to 19c, and perform yum updates
 #	TGorman	23jun21	v1.1	set resource-stickiness=100
+#	TGorman	13mar23	v1.2	move AZ GROUP EXISTS command after AZ ACCOUNT SET
 #================================================================================
 #
 #--------------------------------------------------------------------------------
 # Set global environment variables for the entire script...
 #--------------------------------------------------------------------------------
 _progName="orapcs"
-_progVersion="v1.1"
+_progVersion="v1.2"
 _progArgs="$*"
 _outputMode="terse"
 _azureOwner="`whoami`"
@@ -387,21 +388,21 @@ else
 fi
 #
 #--------------------------------------------------------------------------------
-# Verify that the resource group exists...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: az group exists -n ${_rgName}..." | tee -a ${_logFile}
-if [[ "`az group exists -n ${_rgName}`" != "true" ]]; then
-	echo "`date` - FAIL: resource group \"${_rgName}\" does not exist" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
 # Set the default Azure subscription...
 #--------------------------------------------------------------------------------
 echo "`date` - INFO: az account set subscription..." | tee -a ${_logFile}
 az account set -s "${_azureSubscription}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
 	echo "`date` - FAIL: az account set subscription" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Verify that the resource group exists...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az group exists -n ${_rgName}..." | tee -a ${_logFile}
+if [[ "`az group exists -n ${_rgName}`" != "true" ]]; then
+	echo "`date` - FAIL: resource group \"${_rgName}\" does not exist" | tee -a ${_logFile}
 	exit 1
 fi
 #
