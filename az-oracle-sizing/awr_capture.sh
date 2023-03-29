@@ -63,7 +63,7 @@
 #       (comma separated values) format.
 #
 # Modifications:
-#       TGorman 14feb22 v0.1    written
+#       TGorman 14feb22 v0.1    based on script authored by Kellyn Gorman
 #       TGorman 12oct22 v0.2    added 18c as a tested version
 #       TGorman 31oct22 v0.3    fixed special conditions for 12.2.0.1.0 and 18c
 #       TGorman 02nov22 v0.4    fixed newly-introduced bug for 19c
