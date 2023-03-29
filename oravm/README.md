@@ -1,5 +1,7 @@
 # oravm
-Azure CLI (bash) script to fully automate the creation of an Azure VM to run Oracle database
+Azure CLI (bash) script to fully automate the creation of an Azure VM to run Oracle database.
+
+This script is based on a shell script authored by Kellyn Gorman.
 
 ## Description:
 
