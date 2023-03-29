@@ -95,7 +95,7 @@
 #       VM, and storage disks.  Use the "-v" switch to verify expected naming.
 #
 # Modifications:
-#       TGorman 23apr20 v0.1    written
+#       TGorman 23apr20 v0.1    based on script by original author Kellyn Gorman
 #       TGorman 15jun20 v0.2    various bug fixes
 #       TGorman 16jun20 v0.3    move TEMP to temporary/ephemeral disk
 #       TGorman 22jun20         fix OsDisk Caching typo
