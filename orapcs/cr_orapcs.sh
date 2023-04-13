@@ -1,8 +1,8 @@
 #!/bin/bash
 #================================================================================
-# Name:	cr_orapcs.sh
-# Type:	bash script
-# Date:	13-May 2020
+# Name: cr_oravm.sh
+# Type: bash script
+# Date: 23-April 2020
 # From: Customer Architecture & Engineering (CAE) - Microsoft
 #
 # Copyright and license:
@@ -21,7 +21,7 @@
 #	See the License for the specific language governing permissions and
 #	limitations under the License.
 #
-#	Copyright (c) 2020 by Microsoft.  All rights reserved.
+#	Copyright (c) 2020 by Microsoft. All rights reserved.
 #
 # Ownership and responsibility:
 #
@@ -33,195 +33,198 @@
 #
 # Description:
 #
-#	Script to automate the creation of a Pacemaker/Corosync HA cluster (PCS)
-#	for an Oracle database within Microsoft Azure, using the Azure CLI.
+#	Script to automate the creation of an Oracle database on a marketplace
+#	Oracle image within Microsoft Azure, using the Azure CLI.
 #
 # Command-line Parameters:
 #
-#	cr_orapcs.sh -N -M -O val -P val -S val -V val -g val -h val -i val -r val -u val -v -w val
+#	Usage: ./cr_oravm.sh -G val -H val -N -O val -P val -S val -c val -d val -i val -n val -p val -r val -s val -u val -v -w val -z val
 #
 #	where:
+#		-G resource-group-name	name of the Azure resource group (default: \"{owner}-{project}-rg\")
+#		-H ORACLE_HOME		full path of ORACLE_HOME software (default: /u01/app/oracle/product/19.0.0/dbhome_1)
+#		-N			skip network setup i.e. vnet, NSG, NSG rules (default: false)
+#		-O owner-tag		name of the owner to use in Azure tags (default: Linux 'whoami')
+#		-P project-tag		name of the project to use in Azure tags (default: oravm)
+#		-S subscription		name of the Azure subscription (no default)
+#		-c True|False		True is ReadWrite for OS / ReadOnly for data, False is None (default: True)
+#		-d domain-name		IP domain name (default: internal.cloudapp.net)
+#		-i instance-type	name of the Azure VM instance type (default: Standard_D4ds_v4)
+#		-n #data-disks		number of data disks to attach to the VM (default: 1)
+#		-p Oracle-port		port number of the Oracle TNS Listener (default: 1521)
+#		-r region		name of Azure region (default: westus)
+#		-s ORACLE_SID		Oracle System ID (SID) value (default: oradb01)
+#		-u urn			Azure URN for the VM from the marketplace (default: Oracle:oracle-database-19-3:oracle-database-19-0904:19.3.1)
+#		-v			set verbose output is true (default: false)
+#		-w password		clear-text value of initial SYS and SYSTEM password in Oracle database (default: oracleA1)
+#		-z data-disk-GB		size of each attached data-disk in GB (default: 4095)
 #
-#	-N			skip steps to create vnet/subnet, public-IP, NSG, rules, and PPG
-#	-M			skip steps to create VMs and storage
-#	-O owner-tag		name of the owner to use in Azure tags (no default)
-#	-P project-tag		name of the project to use in Azure tags (no default)
-#	-S subscription		name of the Azure subscription (no default)
-#	-V vip-IPaddr		IP address for the virtual IP (VIP) (default: 10.0.0.10)
-#	-g resource-group	name of the Azure resource group (default: ${_azureOwner}-${_azureProject}-rg)
-#	-h ORACLE_HOME		full path of the ORACLE_HOME software (default: /u01/app/oracle/product/19.0.0/dbhome_1)
-#	-i instance-type	name of the Azure VM instance type for database nodes (default: Standard_D2s_v4)
-#	-r region		name of Azure region (default: westus2)
-#	-u urn			Azure URN for the VM from the marketplace
-#				(default: Oracle:oracle-database-19-3:oracle-database-19-0904:19.3.1)
-#	-v			set verbose output is true (default: false)
-#	-w password		Oracle SYS/SYSTEM account password (default: oracleA1)
+# Expected command-line output:
+#
+#	Please see file "oravm_output.txt" at https://github.com/Azure/Oracle-Workloads-for-Azure/blob/main/oravm/oravm_output.txt
 #
 # Usage notes:
 #
 #	1) Azure subscription must be specified with "-S" switch, always
 #
 #	2) Azure owner, default is output of "whoami" command in shell, can be
-#	   specified using "-O" switch on command-line
+#	  specified using "-O" switch on command-line
 #
-#	3) Azure project, default is "orapcs", can be specified using "-P"
-#	   switch on command-line
+#	3) Azure project, default is "oravm", can be specified using "-P"
+#	  switch on command-line
 #
 #	4) Azure resource group, specify with "-G" switch or with a
-#	   combination of "-O" (project owner tag) and "-P" (project name)
-#	   values (default: "(project owner tag)-(project name)-rg").
+#	  combination of "-O" (project owner tag) and "-P" (project name)
+#	  values (default: "(project owner tag)-(project name)-rg").
 #
-#	   For example, if the project owner tag is "abc" and the project
-#	   name is "beetlejuice", then by default the resource group is
-#	   expected to be named "abc-beetlejuice-rg", unless changes have
-#	   been specified using the "-G", "-O", or "-P" switches
+#	  For example, if the project owner tag is "abc" and the project
+#	  name is "beetlejuice", then by default the resource group is
+#	  expected to be named "abc-beetlejuice-rg", unless changes have
+#	  been specified using the "-G", "-O", or "-P" switches
 #
 #	5) Use the "-v" (verbose) switch to verify that program variables
-#	   have the expected values
+#	  have the expected values
 #
 #	6) For users who are expected to use prebuilt networking (i.e. vnet,
-#	   subnet, network security groups, etc), consider using the "-N"
-#	   switch to accept these as prerequisites 
+#	  subnet, network security groups, etc), please consider using the
+#	  "-N" switch
 #
 #	Please be aware that Azure owner (i.e. "-O") and Azure project (i.e. "-P")
 #	are used to generate names for the Azure resource group, storage
 #	account, virtual network, subnet, network security group and rules,
 #	VM, and storage disks.  Use the "-v" switch to verify expected naming.
 #
-#	The "-N" and "-M" switches were mainly used for debugging, and might well
-#	be removed in more mature versions of the script.  They intended to skip
-#	over some steps if something failed later on.
-#
 # Modifications:
-#	TGorman	13may20	v0.1	written
-#	TGorman 27jul20	v0.2	added new cmd-line parameters
-#	TGorman 14aug20	v0.3	added SCSI fencing
-#	TGorman	17aug20	v0.4	added pause before CRM_VERIFY on both nodes
-#	TGorman	11sep20	v0.5	added availability set for both nodes
-#	TGorman	10nov20	v0.6	added Azure load balancer for VIP, create 3rd VM
-#				from which to test, and change default URN value
-#				from Oracle12c v12.2 to Oracle19c v19.3 as well
-#				as the default ORACLE_HOME path value
-#	TGorman	12nov20 v0.7	contains code to disable Linux firewalld; also
-#				has code that is commented-out to enable Linux
-#				firewall and open necessary ports
-#	TGorman	29jan21	v0.8	set accelerated networking TRUE at NIC creation
-#				and change default VM instance type to
-#				"Standard_D2s_v4"
-#	TGorman	05apr21	v0.9	correct handling of ephemeral SSD by instance type
-#	TGorman	26apr21 v1.0	set waagent.conf to rebuild swapfile after reboot,
-#				set default image to 19c, and perform yum updates
-#	TGorman	23jun21	v1.1	set resource-stickiness=100
-#	TGorman	13mar23	v1.2	move AZ GROUP EXISTS command after AZ ACCOUNT SET
+#	TGorman 23apr20 v0.1	written
+#	TGorman 15jun20 v0.2	various bug fixes
+#	TGorman 16jun20 v0.3	move TEMP to temporary/ephemeral disk
+#	SLuce	22jun20	v0.4	add Azure NetApp Files (ANF) storage
+#	TGorman 22jun20		fix OsDisk Caching typo and finish ANF add
+#	TGorman 18aug20 v0.5	fix minor issues
+#	TGorman 24aug20 v0.6	fix major issues for v0.5
+#	TGorman 17nov20 v0.7	update to default 19c VM image from marketplace
+#	TGorman 27jan21 v0.8	accelerated networking TRUE at NIC creation and
+#				defaulted VM instance type to "Standard_D4ds_v4"
+#	TGorman 03mar21 v0.9	remove NSG rule default-all-ssh open to internet,
+#				add NSG rule ssh-cloud-shell open only to Azure
+#				Cloud service tag.  Also add "yum update" to
+#				ensure that everything is up-to-date...
+#	TGorman 26apr21 v1.0	set waagent.conf to rebuild swapfile after reboot
+#				and perform 2nd "yum update"
+#	TGorman 03jun21 v1.1	Enable Azure VM Backup on resident Oracle db,
+#				attach Azure Files standard share for archived
+#				redo log file storage
+#	TGorman 06jul21 v1.2	regenerate initramfs and reboot before finish
+#	TGorman 29jul21 v1.3	regenerate grub and grub2.cfg files before
+#				regenerating initramfs file and rebooting...
+#	TGorman 10aug21 v1.4	stop Oracle database gracefully before rebooting
+#	TGorman 04jan22 v1.5	install xfsprogs and xfsdump package for earlier
+#				versions of Linux
+#	TGorman 01apr22 v1.6	added "--public-ip-sku Standard" to az vm create
+#	TGorman 24aug22 v1.7	added Oracle Flash Cache config to tempdisk
+#	TGorman 13mar23 v1.8	fixed problem in "sed" script found by Basim Majeed
+#	TGorman 13mar23 v1.9	place AZ GROUP EXISTS after AZ ACCOUNT SET command
+#	TGorman	12apr23	v2.0	added orareboot.sh script to rebuild "oradata"
+#				subdirectory in resource disk on VM reboot
 #================================================================================
 #
 #--------------------------------------------------------------------------------
-# Set global environment variables for the entire script...
+# Set global environment variables with default values...
 #--------------------------------------------------------------------------------
-_progName="orapcs"
-_progVersion="v1.2"
-_progArgs="$*"
+_progVersion="2.0"
+_progName="cr_oravm"
 _outputMode="terse"
 _azureOwner="`whoami`"
-_azureProject="orapcs"
-_azureRegion="westus2"
+_azureProject="oravm"
+_azureRegion="westus"
 _azureSubscription=""
-_skipVnetNicNsg="false" 
-_skipMachines="false" 
 _workDir="`pwd`"
-_logFile="${_workDir}/${_azureOwner}-${_azureProject}.log"
-_rgName="${_azureOwner}-${_azureProject}-rg"
-_vnetName="${_azureOwner}-${_azureProject}-vnet"
-_subnetName="${_azureOwner}-${_azureProject}-subnet"
-_nsgName="${_azureOwner}-${_azureProject}-nsg"
-_ppgName="${_azureOwner}-${_azureProject}-ppg"
-_avSetName="${_azureOwner}-${_azureProject}-avset"
-_lbName="${_azureOwner}-${_azureProject}-lb"
-_lbPoolName="${_azureOwner}-${_azureProject}-lb-pool"
-_lbProbeName="${_azureOwner}-${_azureProject}-lb-probe"
-_lbProbePort="62503"
-_lbRuleName="${_azureOwner}-${_azureProject}-lb-rule"
-_vmSharedDisk="${_azureOwner}-${_azureProject}-sharedDisk01"
-_nicName1="${_azureOwner}-${_azureProject}-nic01"
-_nicName2="${_azureOwner}-${_azureProject}-nic02"
-_nicName3="${_azureOwner}-${_azureProject}-nic03"
-_pubIpName1="${_azureOwner}-${_azureProject}-public-ip01"
-_pubIpName2="${_azureOwner}-${_azureProject}-public-ip02"
-_pubIpName3="${_azureOwner}-${_azureProject}-public-ip03"
-_vmNbr1="vm01"
-_vmNbr2="vm02"
-_vmNbr3="vm03"
-_vmName1="${_azureOwner}-${_azureProject}-${_vmNbr1}"
-_vmName2="${_azureOwner}-${_azureProject}-${_vmNbr2}"
-_vmName3="${_azureOwner}-${_azureProject}-${_vmNbr3}"
+_skipVnetSubnetNsg="false"
 _vmUrn="Oracle:oracle-database-19-3:oracle-database-19-0904:19.3.1"
 _vmDomain="internal.cloudapp.net"
-_vmFQDN1="${_vmName1}.${_vmDomain}"
-_vmFQDN2="${_vmName2}.${_vmDomain}"
+_vmInstanceType="Standard_D4ds_v4"
 _vmOsDiskSize="32"
-_vmDataDiskSize="1024"
-_vmInstanceType="Standard_D2s_v4"
+_vmOsDiskCaching="ReadWrite"
+_vmDataDiskCaching="ReadOnly"
+_vmDataDiskNbr=1
+_vmDataDiskSzGB=4095
+_vgName="vg_ora01"
+_lvName="lv_ora01"
 _oraSid="oradb01"
-_oraBase="/u01/app/oracle"
-_oraVersion="19.0.0"
-_oraHome="${_oraBase}/product/${_oraVersion}/dbhome_1"
-_oraTnsDir=${_oraHome}/network/admin
+_oraHome="/u01/app/oracle/product/19.0.0/dbhome_1"
 _oraInvDir="/u01/app/oraInventory"
 _oraOsAcct="oracle"
 _oraOsGroup="oinstall"
 _oraCharSet="WE8ISO8859P15"
-_vgName="vg_shared_ora01"
-_lvName="lv_shared_ora01"
-_fsType="xfs"
 _oraMntDir="/u02"
 _oraDataDir="${_oraMntDir}/oradata"
 _oraFRADir="${_oraMntDir}/orarecv"
-_oraConfDir="${_oraMntDir}/oraconf"
-_oraClusterSvcAcct="ocfmon"
-_oraSysPwd="oracleA1"
-_oraRedoSizeMB="500"
-_oraLsnr="LISTENER"
-_oraLsnrPort="1521"
-_pcsClusterUser="hacluster"
-_pcsClusterName="${_azureOwner}-${_azureProject}-cluster"
-_pcsClusterGroup="${_azureOwner}-${_azureProject}-group"
-_pcsClusterVIP="${_azureOwner}-${_azureProject}-vip"
-_pcsClusterLB="${_lbName}"
-_pcsClusterLVM="${_azureOwner}-${_azureProject}-lvm"
-_pcsClusterFS="${_azureOwner}-${_azureProject}-fs"
-_pcsClusterDB="${_azureOwner}-${_azureProject}-db"
-_pcsClusterLsnr="${_azureOwner}-${_azureProject}-lsnr"
-_pcsFenceName="${_azureOwner}-${_azureProject}-fence"
-_pcsVipAddr="10.0.0.10"
-_pcsVipMask="24"
+_oraArchDir="/backup"
+_oraSysPwd=oracleA1
+_oraRedoSizeMB=4096
+_oraLsnrPort=1521
+_oraMemPct=70
+_oraMemType="AUTO_SGA"
+_oraFraSzGB=40960
+typeset -i _scsiDevNbr=24
+declare -a _scsiDevList=("",	"sdc" "sdd" "sde" "sdf" "sdg" "sdh" \
+				"sdi" "sdj" "sdk" "sdl" "sdm" "sdn" \
+				"sdo" "sdp" "sdq" "sdr" "sds" "sdt" \
+				"sdu" "sdv" "sdw" "sdx" "sdy" "sdz")
+_rgName="${_azureOwner}-${_azureProject}-rg"
+_realRgName=""
+_vnetName="${_azureOwner}-${_azureProject}-vnet"
+_subnetName="${_azureOwner}-${_azureProject}-subnet"
+_nsgName="${_azureOwner}-${_azureProject}-nsg"
+_nicName="${_azureOwner}-${_azureProject}-nic01"
+_pubIpName="${_azureOwner}-${_azureProject}-pip01"
+_vmName="${_azureOwner}-${_azureProject}-vm01"
+_saName="${_azureOwner}${_azureProject}sa01"
+_shareName="${_azureOwner}-${_azureProject}-share01"
+_vaultName="${_azureOwner}-${_azureProject}-vault01"
+_policyName="${_azureOwner}-${_azureProject}-policy01"
+_workloadConfFile=/tmp/workload_conf_$$.tmp
+_logFile="${_workDir}/${_azureOwner}-${_azureProject}.log"
+_ANFaccountName="${_azureOwner}-${_azureProject}-naa"
+_ANFpoolName="${_azureOwner}-${_azureProject}-pool"
+_ANFvolumeName="${_azureOwner}-${_azureProject}-vol"
+_ANFsubnetName="${_azureOwner}-${_azureProject}-anfnet"
 #
 #--------------------------------------------------------------------------------
 # Accept command-line parameter values to override default values (above)..
 #--------------------------------------------------------------------------------
 typeset -i _parseErrs=0
-while getopts ":MNO:P:S:V:g:h:i:r:u:vw:" OPTNAME
+while getopts ":G:H:NO:P:S:c:d:i:n:p:r:s:u:vw:z:" OPTNAME
 do
 	case "${OPTNAME}" in
-		M)	_skipMachines="true"		;;
-		N)	_skipVnetNicNsg="true"		;;
+		G)	_realRgName="${OPTARG}"		;;
+		H)	_oraHome="${OPTARG}"		;;
+		N)	_skipVnetSubnetNsg="true"	;;
 		O)	_azureOwner="${OPTARG}"		;;
 		P)	_azureProject="${OPTARG}"	;;
-		S)	_azureSubscription="${OPTARG}"	;;
-		V)	_pcsVipAddr="${OPTARG}"		;;
-		g)	_rgName="${OPTARG}"		;;
-		h)	_oraHome="${OPTARG}"		;;
+		S)	_azureSubscription="${OPTARG}"  ;;
+		c)	typeset -u _TRUEorFALSE=${OPTARG}
+			if [[ "${_TRUEorFALSE}" != "TRUE" ]]; then
+				_vmOsDiskCaching="None"
+				_vmDataDiskCaching="None"
+			fi				;;
+		d)	_vmDomain="${OPTARG}"		;;
 		i)	_vmInstanceType="${OPTARG}"	;;
+		n)	_vmDataDiskNbr="${OPTARG}"	;;
+		p)	_oraLsnrPort="${OPTARG}"	;;
 		r)	_azureRegion="${OPTARG}"	;;
+		s)	_oraSid="${OPTARG}"		;;
 		u)	_vmUrn="${OPTARG}"		;;
 		v)	_outputMode="verbose"		;;
 		w)	_oraSysPwd="${OPTARG}"		;;
+		z)	_vmDataDiskSzGB="${OPTARG}"	;;
 		:)	echo "`date` - FAIL: expected \"${OPTARG}\" value not found"
 			typeset -i _parseErrs=${_parseErrs}+1
-			;;
+							;;
 		\?)	echo "`date` - FAIL: unknown command-line option \"${OPTARG}\""
 			typeset -i _parseErrs=${_parseErrs}+1
-			;;
-	esac	
+							;;
+	esac
 done
 shift $((OPTIND-1))
 #
@@ -229,171 +232,134 @@ shift $((OPTIND-1))
 # If any errors occurred while processing the command-line parameters, then display
 # a usage message and exit with failure status...
 #--------------------------------------------------------------------------------
-if (( ${_parseErrs} > 0 )); then
-	echo "Usage: $0 -M -N -O val -P val -S val -V val -g val -h val -i val -r val -u val -v -w val"
+if (( ${_parseErrs} > 0 ))
+then
+	echo "Usage: $0 -G val -H val -N -O val -P val -S val -c val -d val -i val -n val -p val -r val -s val -u val -v -w val -z val"
 	echo "where:"
-	echo "	-M 			skip steps to create VMs and storage"
-	echo "	-N 			skip steps to create vnet/subnet, public-IP, NSG, rules, and PPG"
-	echo "	-O owner-tag		name of the owner to use in Azure tags (no default)"
-	echo "	-P project-tag		name of the project to use in Azure tags (no default)"
-	echo "	-S subscription		name of the Azure subscription (no default)"
-	echo "	-V vip-IPaddr		IP address for the virtual IP (VIP) (default: 10.0.0.10)"
-	echo "	-g resource-group	name of the Azure resource group (default: ${_azureOwner}-${_azureProject}-rg)"
-	echo "	-h ORACLE_HOME		full path of the ORACLE_HOME software (default: /u01/app/oracle/product/19.0.0/dbhome_1)"
-	echo "	-i instance-type	name of the Azure VM instance type for database nodes (default: Standard_D2s_v4)"
-	echo "	-r region		name of Azure region (default: westus2)"
-	echo "	-u urn			Azure URN for the VM from the marketplace"
-	echo "				(default: Oracle:oracle-database-19-3:oracle-database-19-0904:19.3.1)"
-	echo "	-v			set verbose output is true (default: false)"
-	echo "	-w password		Oracle SYS/SYSTEM account password (default: oracleA1)"
+	echo "  -G resource-group-name  name of the Azure resource group (default: \"{owner}-{project}-rg\")"
+	echo "  -H ORACLE_HOME		full path of the ORACLE_HOME software (default: /u01/app/oracle/product/19.0.0/dbhome_1)"
+	echo "  -N			skip network setup i.e. vnet, NSG, NSG rules (default: false)"
+	echo "  -O owner-tag		name of the owner to use in Azure tags (default: Linux 'whoami')"
+	echo "  -P project-tag		name of the project to use in Azure tags (no default)"
+	echo "  -S subscription		name of the Azure subscription (no default)"
+	echo "  -c True|False		True is ReadWrite for OS / ReadOnly for data, False is None (default: True)"
+	echo "  -d domain-name		IP domain name (default: internal.cloudapp.net)"
+	echo "  -i instance-type	name of the Azure VM instance type (default: Standard_D4ds_v4)"
+	echo "  -n #data-disks		number of data disks to attach to the VM (default: 1)"
+	echo "  -p Oracle-port		port number of the Oracle TNS Listener (default: 1521)"
+	echo "  -r region		name of Azure region (default: westus)"
+	echo "  -s ORACLE_SID		Oracle System ID (SID) value (default: oradb01)"
+	echo "  -u urn			Azure URN for the VM from the marketplace (default: Oracle:oracle-database-19-3:oracle-database-19-0904:19.3.1)"
+	echo "  -v			set verbose output is true (default: false)"
+	echo "  -w password		clear-text value of initial SYS and SYSTEM password in Oracle database (default: oracleA1)"
+	echo "  -z data-disk-GB		size of each attached data-disk in GB (default: 4095)"
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# Re-set script variables in case "owner" or "project" was changed...
+# Set script variables based on owner and project values...
 #--------------------------------------------------------------------------------
-_logFile="${_workDir}/${_azureOwner}-${_azureProject}.log"
+if [[ "${_realRgName}" != "" ]]
+then
+	_rgName="${_realRgName}"
+else
+	_rgName="${_azureOwner}-${_azureProject}-rg"
+fi
 _vnetName="${_azureOwner}-${_azureProject}-vnet"
 _subnetName="${_azureOwner}-${_azureProject}-subnet"
 _nsgName="${_azureOwner}-${_azureProject}-nsg"
-_ppgName="${_azureOwner}-${_azureProject}-ppg"
-_avSetName="${_azureOwner}-${_azureProject}-avset"
-_lbName="${_azureOwner}-${_azureProject}-lb"
-_lbPoolName="${_azureOwner}-${_azureProject}-lb-pool"
-_lbProbeName="${_azureOwner}-${_azureProject}-lb-probe"
-_lbRuleName="${_azureOwner}-${_azureProject}-lb-rule"
-_vmSharedDisk="${_azureOwner}-${_azureProject}-sharedDisk01"
-_nicName1="${_azureOwner}-${_azureProject}-nic01"
-_nicName2="${_azureOwner}-${_azureProject}-nic02"
-_nicName3="${_azureOwner}-${_azureProject}-nic03"
-_pubIpName1="${_azureOwner}-${_azureProject}-public-ip01"
-_pubIpName2="${_azureOwner}-${_azureProject}-public-ip02"
-_pubIpName3="${_azureOwner}-${_azureProject}-public-ip03"
-_vmName1="${_azureOwner}-${_azureProject}-${_vmNbr1}"
-_vmName2="${_azureOwner}-${_azureProject}-${_vmNbr2}"
-_vmName3="${_azureOwner}-${_azureProject}-${_vmNbr3}"
-_vmFQDN1="${_vmName1}.${_vmDomain}"
-_vmFQDN2="${_vmName2}.${_vmDomain}"
-_pcsClusterName="${_azureOwner}-${_azureProject}-cluster"
-_pcsClusterGroup="${_azureOwner}-${_azureProject}-group"
-_pcsClusterVIP="${_azureOwner}-${_azureProject}-vip"
-_pcsClusterLB="${_lbName}"
-_pcsClusterLVM="${_azureOwner}-${_azureProject}-lvm"
-_pcsClusterFS="${_azureOwner}-${_azureProject}-fs"
-_pcsClusterDB="${_azureOwner}-${_azureProject}-db"
-_pcsClusterLsnr="${_azureOwner}-${_azureProject}-lsnr"
-_pcsFenceName="${_azureOwner}-${_azureProject}-fence"
-_oraTnsDir=${_oraHome}/network/admin
+_nicName="${_azureOwner}-${_azureProject}-nic01"
+_pubIpName="${_azureOwner}-${_azureProject}-public-ip01"
+_vmName="${_azureOwner}-${_azureProject}-vm01"
+_saName="${_azureOwner}${_azureProject}sa01"
+_shareName="${_azureOwner}-${_azureProject}-share01"
+_vaultName="${_azureOwner}-${_azureProject}-vault01"
+_policyName="${_azureOwner}-${_azureProject}-policy01"
+_logFile="${_workDir}/${_azureOwner}-${_azureProject}.log"
+_ANFaccountName="${_azureOwner}-${_azureProject}-naa"
+_ANFpoolName="${_azureOwner}-${_azureProject}-pool"
+_ANFvolumeName="${_azureOwner}-${_azureProject}-vol"
+_ANFsubnetName="${_azureOwner}-${_azureProject}-anfnet"
 #
 #--------------------------------------------------------------------------------
 # Display variable values when output is set to "verbose"...
 #--------------------------------------------------------------------------------
-if [[ "${_outputMode}" = "verbose" ]]; then
-	echo "`date` - DBUG: variable _progName is \"${_progName}\""
-	echo "`date` - DBUG: variable _progVersion is \"${_progVersion}\""
-	echo "`date` - DBUG: variable _progArgs is \"${_progArgs}\""
-	echo "`date` - DBUG: parameter _skipVnetNicNsg is \"${_skipVnetNicNsg}\""
-	echo "`date` - DBUG: parameter _skipMachines is \"${_skipMachines}\""
+if [[ "${_outputMode}" = "verbose" ]]
+then
 	echo "`date` - DBUG: parameter _rgName is \"${_rgName}\""
+	echo "`date` - DBUG: parameter _skipVnetSubnetNsg is \"${_skipVnetSubnetNsg}\""
 	echo "`date` - DBUG: parameter _azureOwner is \"${_azureOwner}\""
 	echo "`date` - DBUG: parameter _azureProject is \"${_azureProject}\""
 	echo "`date` - DBUG: parameter _azureSubscription is \"${_azureSubscription}\""
-	echo "`date` - DBUG: parameter _pcsVipAddr is \"${_pcsVipAddr}\""
+	echo "`date` - DBUG: parameter _vmDataDiskCaching is \"${_vmDataDiskCaching}\""
+	echo "`date` - DBUG: parameter _vmDomain is \"${_vmDomain}\""
+	echo "`date` - DBUG: parameter _oraHome is \"${_oraHome}\""
 	echo "`date` - DBUG: parameter _vmInstanceType is \"${_vmInstanceType}\""
+	echo "`date` - DBUG: parameter _vmDataDiskNbr is \"${_vmDataDiskNbr}\""
+	echo "`date` - DBUG: parameter _oraLsnrPort is \"${_oraLsnrPort}\""
 	echo "`date` - DBUG: parameter _azureRegion is \"${_azureRegion}\""
+	echo "`date` - DBUG: parameter _oraSid is \"${_oraSid}\""
 	echo "`date` - DBUG: parameter _vmUrn is \"${_vmUrn}\""
+	echo "`date` - DBUG: parameter _vmDataDiskSzGB is \"${_vmDataDiskSzGB}\""
 	echo "`date` - DBUG: variable _workDir is \"${_workDir}\""
 	echo "`date` - DBUG: variable _logFile is \"${_logFile}\""
-	echo "`date` - DBUG: variable _vmDomain is \"${_vmDomain}\""
 	echo "`date` - DBUG: variable _vnetName is \"${_vnetName}\""
 	echo "`date` - DBUG: variable _subnetName is \"${_subnetName}\""
 	echo "`date` - DBUG: variable _nsgName is \"${_nsgName}\""
-	echo "`date` - DBUG: variable _ppgName is \"${_ppgName}\""
-	echo "`date` - DBUG: variable _avSetName is \"${_avSetName}\""
-	echo "`date` - DBUG: variable _lbName is \"${_lbName}\""
-	echo "`date` - DBUG: variable _lbPoolName is \"${_lbPoolName}\""
-	echo "`date` - DBUG: variable _lbProbeName is \"${_lbProbeName}\""
-	echo "`date` - DBUG: variable _lbRuleName is \"${_lbRuleName}\""
-	echo "`date` - DBUG: variable _nicName1 is \"${_nicName1}\""
-	echo "`date` - DBUG: variable _pubIpName1 is \"${_pubIpName1}\""
-	echo "`date` - DBUG: variable _vmName1 is \"${_vmName1}\""
-	echo "`date` - DBUG: variable _nicName2 is \"${_nicName2}\""
-	echo "`date` - DBUG: variable _pubIpName2 is \"${_pubIpName2}\""
-	echo "`date` - DBUG: variable _vmName2 is \"${_vmName2}\""
-	echo "`date` - DBUG: variable _nicName3 is \"${_nicName3}\""
-	echo "`date` - DBUG: variable _pubIpName3 is \"${_pubIpName3}\""
-	echo "`date` - DBUG: variable _vmName3 is \"${_vmName3}\""
-	echo "`date` - DBUG: variable _oraSid is \"${_oraSid}\""
-	echo "`date` - DBUG: variable _oraLsnr is \"${_oraLsnr}\""
-	echo "`date` - DBUG: variable _oraLsnrPort is \"${_oraLsnrPort}\""
-	echo "`date` - DBUG: variable _pcsClusterName is \"${_pcsClusterName}\""
-	echo "`date` - DBUG: variable _pcsClusterGroup is \"${_pcsClusterGroup}\""
-	echo "`date` - DBUG: variable _pcsClusterUser is \"${_pcsClusterUser}\""
-	echo "`date` - DBUG: variable _pcsClusterVIP is \"${_pcsClusterVIP}\""
-	echo "`date` - DBUG: variable _pcsClusterLB is \"${_pcsClusterLB}\""
-	echo "`date` - DBUG: variable _pcsClusterLVM is \"${_pcsClusterLVM}\""
-	echo "`date` - DBUG: variable _pcsClusterFS is \"${_pcsClusterFS}\""
-	echo "`date` - DBUG: variable _pcsClusterDB is \"${_pcsClusterDB}\""
-	echo "`date` - DBUG: variable _pcsClusterLsnr is \"${_pcsClusterLsnr}\""
-	echo "`date` - DBUG: variable _pcsFenceName is \"${_pcsFenceName}\""
-	echo "`date` - DBUG: variable _pcsVipMask is \"${_pcsVipMask}\""
-	echo "`date` - DBUG: variable _vmFQDN1 is \"${_vmFQDN1}\""
-	echo "`date` - DBUG: variable _vmFQDN2 is \"${_vmFQDN2}\""
+	echo "`date` - DBUG: variable _nicName is \"${_nicName}\""
+	echo "`date` - DBUG: variable _pubIpName is \"${_pubIpName}\""
+	echo "`date` - DBUG: variable _vmName is \"${_vmName}\""
+	echo "`date` - DBUG: variable _saName is \"${_saName}\""
+	echo "`date` - DBUG: variable _shareName is \"${_shareName}\""
+	echo "`date` - DBUG: variable _vaultName is \"${_vaultName}\""
+	echo "`date` - DBUG: variable _policyName is \"${_policyName}\""
 	echo "`date` - DBUG: variable _vmOsDiskSize is \"${_vmOsDiskSize}\""
-	echo "`date` - DBUG: variable _vmDataDiskSize is \"${_vmDataDiskSize}\""
-	echo "`date` - DBUG: variable _oraVersion is \"${_oraVersion}\""
-	echo "`date` - DBUG: variable _oraBase is \"${_oraBase}\""
-	echo "`date` - DBUG: variable _oraHome is \"${_oraHome}\""
-	echo "`date` - DBUG: variable _oraTnsDir is \"${_oraTnsDir}\""
+	echo "`date` - DBUG: variable _vmOsDiskCaching is \"${_vmOsDiskCaching}\""
+	echo "`date` - DBUG: variable _vgName is \"${_vgName}\""
+	echo "`date` - DBUG: variable _lvName is \"${_lvName}\""
 	echo "`date` - DBUG: variable _oraInvDir is \"${_oraInvDir}\""
 	echo "`date` - DBUG: variable _oraOsAcct is \"${_oraOsAcct}\""
 	echo "`date` - DBUG: variable _oraOsGroup is \"${_oraOsGroup}\""
 	echo "`date` - DBUG: variable _oraCharSet is \"${_oraCharSet}\""
-	echo "`date` - DBUG: variable _vgName is \"${_vgName}\""
-	echo "`date` - DBUG: variable _lvName is \"${_lvName}\""
 	echo "`date` - DBUG: variable _oraMntDir is \"${_oraMntDir}\""
 	echo "`date` - DBUG: variable _oraDataDir is \"${_oraDataDir}\""
 	echo "`date` - DBUG: variable _oraFRADir is \"${_oraFRADir}\""
-	echo "`date` - DBUG: variable _oraConfDir is \"${_oraConfDir}\""
-	echo "`date` - DBUG: variable _oraClusterSvcAcct is \"${_oraClusterSvcAcct}\""
+	echo "`date` - DBUG: variable _oraArchDir is \"${_oraArchDir}\""
 	echo "`date` - DBUG: variable _oraRedoSizeMB is \"${_oraRedoSizeMB}\""
+	echo "`date` - DBUG: variable _oraMemPct is \"${_oraMemPct}\""
+	echo "`date` - DBUG: variable _oraMemType is \"${_oraMemType}\""
+	echo "`date` - DBUG: variable _oraFraSzGB is \"${_oraFraSzGB}\""
+	echo "`date` - DBUG: variable _ANFaccountName is \"${_ANFaccountName}\""
+	echo "`date` - DBUG: variable _ANFpoolName is \"${_ANFpoolName}\""
+	echo "`date` - DBUG: variable _ANFvolumeName is \"${_ANFvolumeName}\""
+	echo "`date` - DBUG: variable _ANFsubnetName is \"${_ANFsubnetName}\""
+fi
+#
+#--------------------------------------------------------------------------------
+# Verify that the requested number of data disks is less than the script's max...
+#--------------------------------------------------------------------------------
+if (( ${_vmDataDiskNbr} > ${_scsiDevNbr} )); then
+	echo "`date` - FAIL: number of data disks must be <= ${_scsiDevNbr}" | tail -a ${_logFile}
+	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
 # Remove any existing logfile...
 #--------------------------------------------------------------------------------
 rm -f ${_logFile}
-echo "`date` - INFO: \"$0 ${_progArgs}\" ${_progVersion}, starting..." | tee -a ${_logFile}
 #
 #--------------------------------------------------------------------------------
-# Azure shared disk requires AZ CLI version 2.5.0 or above...
+# Log the script version...
 #--------------------------------------------------------------------------------
-_azVersion="`az --version 2> /dev/null | grep '^azure-cli' | awk '{print $2}'`"
-typeset -i _azVersionRelease="`echo ${_azVersion} | awk -F\. '{print $1}'`"
-typeset -i _azVersionMajor="`echo ${_azVersion} | awk -F\. '{print $2}'`"
-typeset -i _azVersionMinor="`echo ${_azVersion} | awk -F\. '{print $3}'`"
-if (( ${_azVersionRelease} < 2 ))
-then
-	echo "`date` - FAIL: az CLI version is less than 2.5.0; does not support Azure shared disk" | tee -a ${_logFile}
-	exit 1
-else
-	if (( ${_azVersionRelease} == 2 ))
-	then
-		if (( ${_azVersionMajor} < 5 ))
-		then
-			echo "`date` - FAIL: az CLI version is less than 2.5.0; does not support Azure shared disk" | tee -a ${_logFile}
-			exit 1
-		fi
-	fi
-fi
+echo "`date` - INFO: ${_progName}.sh version ${_progVersion}..." | tee -a ${_logFile}
 #
 #--------------------------------------------------------------------------------
 # Set the default Azure subscription...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: az account set subscription..." | tee -a ${_logFile}
+echo "`date` - INFO: az account set..." | tee -a ${_logFile}
 az account set -s "${_azureSubscription}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az account set subscription" | tee -a ${_logFile}
+	echo "`date` - FAIL: ${_azureProject} - az account set" | tee -a ${_logFile}
 	exit 1
 fi
 #
@@ -412,7 +378,7 @@ fi
 echo "`date` - INFO: az configure --defaults group location..." | tee -a ${_logFile}
 az configure --defaults group=${_rgName} location=${_azureRegion} >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az configure --defaults group location" | tee -a ${_logFile}
+	echo "`date` - FAIL: ${_azureProject} - az configure --defaults group location" | tee -a ${_logFile}
 	exit 1
 fi
 #
@@ -420,7 +386,7 @@ fi
 # If the user elected to skip the creation of vnet, the NIC, the NSG, and the
 # rules...
 #--------------------------------------------------------------------------------
-if [[ "${_skipVnetNicNsg}" = "false" ]]; then
+if [[ "${_skipVnetSubnetNsg}" = "false" ]]; then
 	#
 	#------------------------------------------------------------------------
 	# Create an Azure virtual network for this project...
@@ -452,19 +418,20 @@ if [[ "${_skipVnetNicNsg}" = "false" ]]; then
 	fi
 	#
 	#------------------------------------------------------------------------
-	# Create a custom Azure network security group rule to permit SSH access...
+	# Create a custom Azure network security group rule to permit SSH access
+	# over port 22...
 	#------------------------------------------------------------------------
 	echo "`date` - INFO: az network nsg rule create ssh-cloud-shell..." | tee -a ${_logFile}
 	az network nsg rule create \
-                --name ssh-cloud-shell \
-                --nsg-name ${_nsgName} \
-                --priority 1000 \
-                --direction Inbound \
-                --protocol TCP \
-                --source-address-prefixes AzureCloud \
-                --destination-address-prefixes \* \
-                --destination-port-ranges 22 \
-                --access Allow \
+		--name ssh-cloud-shell \
+		--nsg-name ${_nsgName} \
+		--priority 1000 \
+		--direction Inbound \
+		--protocol TCP \
+		--source-address-prefixes AzureCloud \
+		--destination-address-prefixes \* \
+		--destination-port-ranges 22 \
+		--access Allow \
 		--verbose >> ${_logFile} 2>&1
 	if (( $? != 0 )); then
 		echo "`date` - FAIL: az network nsg rule create ssh-cloud-shell" | tee -a ${_logFile}
@@ -472,514 +439,687 @@ if [[ "${_skipVnetNicNsg}" = "false" ]]; then
 	fi
 	#
 	#------------------------------------------------------------------------
-	# Create a custom Azure network security group rule to permit access for
-	# PCS Pacemaker/Corosync services on TCP ports 2224 (i.e. PCSD daemon),
-	# 3121 (i.e. Pacemaker remote nodes), and 21064 (i.e. DLM resources)...
+	# Create a custom Azure network security group rule to permit SMB (CIFS)
+	# access over port 445...
 	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network nsg rule create pcs-tcp-access..." | tee -a ${_logFile}
+	echo "`date` - INFO: az network nsg rule create smb-cloud-shell..." | tee -a ${_logFile}
 	az network nsg rule create \
-		--name pcs-tcp-access \
+		--name smb-cloud-shell \
 		--nsg-name ${_nsgName} \
 		--priority 1010 \
 		--direction Inbound \
 		--protocol TCP \
-		--source-address-prefixes \* \
-		--source-port-ranges \* \
+		--source-address-prefixes AzureCloud \
 		--destination-address-prefixes \* \
-		--destination-port-ranges 2224 3121 21064 \
+		--destination-port-ranges 445 \
 		--access Allow \
 		--verbose >> ${_logFile} 2>&1
 	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network nsg rule create pcs-tcp-access" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create a custom Azure network security group rule to permit access for
-	# PCS Pacemaker/Corosync services on UDP ports 5404 (i.e. Corosync
-	# multicast, if enabled) and 5405 (i.e. Corosync clustering)...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network nsg rule create pcs-udp-access..." | tee -a ${_logFile}
-	az network nsg rule create \
-		--name pcs-udp-access \
-		--nsg-name ${_nsgName} \
-		--priority 1020 \
-		--direction Inbound \
-		--protocol UDP \
-		--source-address-prefixes \* \
-		--source-port-ranges \* \
-		--destination-address-prefixes \* \
-		--destination-port-ranges 5404 5405 \
-		--access Allow \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network nsg rule create pcs-udp-access" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure proximity placement group for this project...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az ppg create ${_ppgName}..." | tee -a ${_logFile}
-	az ppg create \
-		--name ${_ppgName} \
-		--type Standard \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az ppg create ${_ppgName}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure availability set for this project...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az vm availability-set create ${_avSetName}..." | tee -a ${_logFile}
-	az vm availability-set create \
-		--name ${_avSetName} \
-		--ppg ${_ppgName} \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az vm availability-set create ${_avSetName}" | tee -a ${_logFile}
+		echo "`date` - FAIL: az network nsg rule create smb-cloud-shell" | tee -a ${_logFile}
 		exit 1
 	fi
 	#
 fi
 #
 #--------------------------------------------------------------------------------
-# If the user elected to skip the creation of virtual machines and data storage...
+# Create an Azure public IP address object for use with the first VM...
 #--------------------------------------------------------------------------------
-if [[ "${_skipMachines}" = "false" ]]; then
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure public IP address object for use with the first VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network public-ip create ${_pubIpName1}..." | tee -a ${_logFile}
-	az network public-ip create \
-		--name ${_pubIpName1} \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--allocation-method Static \
-		--sku Standard \
-		--version IPv4 \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network public-ip create ${_pubIpName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure network interface (NIC) object for use with the first
-	# VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network nic create ${_nicName1}..." | tee -a ${_logFile}
-	az network nic create \
-		--name ${_nicName1} \
-		--vnet-name ${_vnetName} \
-		--subnet ${_subnetName} \
-		--network-security-group ${_nsgName} \
-		--public-ip-address ${_pubIpName1} \
-		--accelerated-networking TRUE \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network nic create ${_nicName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create the first Azure virtual machine (VM), intended to be used as
-	# the primary Oracle database server/host...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az vm create ${_vmName1}..." | tee -a ${_logFile}
-	az vm create \
-		--name ${_vmName1} \
-		--image ${_vmUrn}:latest \
-		--admin-username ${_azureOwner} \
-		--size ${_vmInstanceType} \
-		--nics ${_nicName1} \
-		--ppg ${_ppgName} \
-		--availability-set ${_avSetName} \
-		--os-disk-name ${_vmName1}-osdisk \
-		--os-disk-size-gb ${_vmOsDiskSize} \
-		--os-disk-caching ReadWrite \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--generate-ssh-keys \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az vm create ${_vmName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create a shared disk for use with the two VMs...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az disk create --max-shares 2 on ${_vmName1}..." | tee -a ${_logFile}
-	az disk create --name ${_vmSharedDisk} \
-		--size ${_vmDataDiskSize} \
-		--max-shares 2 \
-		--sku Premium_LRS \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az disk create --max-shares 2 on ${_vmName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Attach the shared data disk to the first VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az vm disk attach to ${_vmName1}..." | tee -a ${_logFile}
-	az vm disk attach \
-		--name ${_vmSharedDisk} \
-		--vm-name ${_vmName1} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az vm disk attach ${_vmName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure public IP address object for use with the second VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network public-ip create ${_pubIpName2}..." | tee -a ${_logFile}
-	az network public-ip create \
-		--name ${_pubIpName2} \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--allocation-method Static \
-		--sku Standard \
-		--version IPv4 \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network public-ip create ${_pubIpName2}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure network interface (NIC) object for use with the second
-	# VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network nic create ${_nicName2}..." | tee -a ${_logFile}
-	az network nic create \
-		--name ${_nicName2} \
-		--vnet-name ${_vnetName} \
-		--subnet ${_subnetName} \
-		--network-security-group ${_nsgName} \
-		--public-ip-address ${_pubIpName2} \
-		--accelerated-networking TRUE \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network nic create ${_nicName2}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create the second Azure virtual machine (VM), intended to be used as
-	# the standby Oracle database server/host...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az vm create ${_vmName2}..." | tee -a ${_logFile}
-	az vm create \
-		--name ${_vmName2} \
-		--image ${_vmUrn}:latest \
-		--admin-username ${_azureOwner} \
-		--size ${_vmInstanceType} \
-		--nics ${_nicName2} \
-		--ppg ${_ppgName} \
-		--availability-set ${_avSetName} \
-		--os-disk-name ${_vmName2}-osdisk \
-		--os-disk-size-gb ${_vmOsDiskSize} \
-		--os-disk-caching ReadWrite \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--generate-ssh-keys \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az vm create ${_vmName2}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Attach the shared data disk to the second VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az vm disk attach to ${_vmName2}..." | tee -a ${_logFile}
-	az vm disk attach \
-		--name ${_vmSharedDisk} \
-		--vm-name ${_vmName2} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az vm disk attach ${_vmName2}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure public IP address object for use with the third VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network public-ip create ${_pubIpName3}..." | tee -a ${_logFile}
-	az network public-ip create \
-		--name ${_pubIpName3} \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--allocation-method Static \
-		--sku Standard \
-		--version IPv4 \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network public-ip create ${_pubIpName3}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create an Azure network interface (NIC) object for use with the third
-	# VM...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az network nic create ${_nicName3}..." | tee -a ${_logFile}
-	az network nic create \
-		--name ${_nicName3} \
-		--vnet-name ${_vnetName} \
-		--subnet ${_subnetName} \
-		--network-security-group ${_nsgName} \
-		--public-ip-address ${_pubIpName3} \
-		--accelerated-networking TRUE \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az network nic create ${_nicName3}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# Create the third Azure virtual machine (VM), intended to be used as
-	# an observer or node from which to launch testing of the cluster...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: az vm create ${_vmName3}..." | tee -a ${_logFile}
-	az vm create \
-		--name ${_vmName3} \
-		--image ${_vmUrn}:latest \
-		--admin-username ${_azureOwner} \
-		--size ${_vmInstanceType} \
-		--nics ${_nicName3} \
-		--availability-set ${_avSetName} \
-		--os-disk-name ${_vmName3}-osdisk \
-		--os-disk-size-gb ${_vmOsDiskSize} \
-		--os-disk-caching ReadWrite \
-		--tags owner=${_azureOwner} project=${_azureProject} \
-		--generate-ssh-keys \
-		--verbose >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: az vm create ${_vmName3}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
+echo "`date` - INFO: az network public-ip create ${_pubIpName}..." | tee -a ${_logFile}
+az network public-ip create \
+	--name ${_pubIpName} \
+	--tags owner=${_azureOwner} project=${_azureProject} \
+	--allocation-method Static \
+	--sku Basic \
+	--version IPv4 \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az network public-ip create ${_pubIpName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create an Azure network interface (NIC) object for use with the first VM...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az network nic create ${_nicName}..." | tee -a ${_logFile}
+az network nic create \
+	--name ${_nicName} \
+	--vnet-name ${_vnetName} \
+	--subnet ${_subnetName} \
+	--network-security-group ${_nsgName} \
+	--public-ip-address ${_pubIpName} \
+	--accelerated-networking TRUE \
+	--tags owner=${_azureOwner} project=${_azureProject} \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az network nic create ${_nicName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create the Azure virtual machine (VM), intended to be used as the Oracle
+# database server/host...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az vm create ${_vmName}..." | tee -a ${_logFile}
+az vm create \
+	--name ${_vmName} \
+	--image ${_vmUrn}:latest \
+	--admin-username ${_azureOwner} \
+	--size ${_vmInstanceType} \
+	--nics ${_nicName} \
+	--os-disk-name ${_vmName}-osdisk \
+	--os-disk-size-gb ${_vmOsDiskSize} \
+	--os-disk-caching ${_vmOsDiskCaching} \
+	--tags owner=${_azureOwner} project=${_azureProject} \
+	--public-ip-sku Standard \
+	--generate-ssh-keys \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az vm create ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create Azure storage account from which an Azure Files standard SMB/CIFS share
+# will be allocated for Oracle archived redo log files...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az storage account create ${_saName}..." | tee -a ${_logFile}
+az storage account create \
+	--name ${_saName} \
+	--sku Standard_RAGRS \
+	--kind StorageV2 \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az storage account create ${_saName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create Azure Files standard SMB/CIFS share which will be allocated for Oracle
+# database archived redo log files...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az storage share create ${_shareName}..." | tee -a ${_logFile}
+az storage share create \
+	--name ${_shareName} \
+	--account-name ${_saName} \
+	--quota 4096 \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az storage share create ${_shareName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Retrieve the URL to access the storage account...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az storage account show ${_saName}..." | tee -a ${_logFile}
+_saHttps=`az storage account show \
+	--resource-group ${_rgName} \
+	--name ${_saName} \
+	--query "primaryEndpoints.file" | tr -d '"'`
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az storage account show ${_saName}" | tee -a ${_logFile}
+	exit 1
+fi
+echo "`date` - INFO: az storage account ${_saName} is \"${_saHttps}\"..." | tee -a ${_logFile}
+#
+#--------------------------------------------------------------------------------
+# Retrieve the storage account keys for later use when mounting the CIFS/SMB
+# file share within the VM...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az storage account keys list ${_saName}..." | tee -a ${_logFile}
+_saKey=`az storage account keys list \
+	--resource-group ${_rgName} \
+	--account-name ${_saName} \
+	--query "[0].value" | tr -d '"'`
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az storage account keys list ${_saName}" | tee -a ${_logFile}
+	exit 1
+fi
+if [[ "${_outputMode}" = "verbose" ]]
+then
+	echo "`date` - DBUG: az storage account keys list is \"${_saKey}\""
+fi
+#
+#--------------------------------------------------------------------------------
+# Create an Azure Recovery Services vault...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az backup vault create ${_vaultName}..." | tee -a ${_logFile}
+az backup vault create \
+	--name ${_vaultName} \
+	--tags owner=${_azureOwner} project=${_azureProject} \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az backup vault create ${_vaultName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create an Azure Backup policy...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az backup policy create ${_policyName}..." | tee -a ${_logFile}
+az backup policy create \
+	--name ${_policyName} \
+	--vault-name ${_vaultName} \
+	--backup-management-type AzureIaasVM \
+	--workload-type VM \
+	--policy '
+{
+  "eTag": null,
+  "location": null,
+  "name": "${_policyName}",
+  "properties": {
+	"backupManagementType": "AzureIaasVM",
+	"instantRpDetails": {
+	"azureBackupRgNamePrefix": null,
+	"azureBackupRgNameSuffix": null
+	},
+	"instantRpRetentionRangeInDays": 2,
+	"protectedItemsCount": 0,
+	"retentionPolicy": {
+	"dailySchedule": {
+	"retentionDuration": {
+	  "count": 30,
+	  "durationType": "Days"
+	},
+	"retentionTimes": [
+	  "2020-09-30T19:30:00+00:00"
+	]
+	},
+	"monthlySchedule": null,
+	"retentionPolicyType": "LongTermRetentionPolicy",
+	"weeklySchedule": null,
+	"yearlySchedule": null
+	},
+	"schedulePolicy": {
+	"schedulePolicyType": "SimpleSchedulePolicy",
+	"scheduleRunDays": null,
+	"scheduleRunFrequency": "Daily",
+	"scheduleRunTimes": [
+	"2020-09-30T19:30:00+00:00"
+	],
+	"scheduleWeeklyFrequency": 0
+	},
+	"timeZone": "UTC"
+  },
+  "resourceGroup": "${_rgName}",
+  "tags": null,
+  "type": "Microsoft.RecoveryServices/vaults/backupPolicies"
+}'	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az backup policy create ${_policyName}" | tee -a ${_logFile}
+	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
 # Obtain the public IP addresses for future use within the script...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: az network public-ip show ${_pubIpName1}..." | tee -a ${_logFile}
-_ipAddr1=`az network public-ip show --name ${_pubIpName1} | \
-	 jq '. | {ipaddr: .ipAddress}' | \
-	 grep ipaddr | \
-	 awk '{print $2}' | \
-	 sed 's/"//g'`
+echo "`date` - INFO: az network public-ip show ${_pubIpName}..." | tee -a ${_logFile}
+_ipAddr=`az network public-ip show --name ${_pubIpName} | \
+	jq '. | {ipaddr: .ipAddress}' | \
+	grep ipaddr | \
+	awk '{print $2}' | \
+	sed 's/"//g'`
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az network public-ip show ${_pubIpName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: az network public-ip show ${_pubIpName}" | tee -a ${_logFile}
 	exit 1
-fi
-echo "`date` - INFO: public IP ${_ipAddr1} on ${_vmName1}..." | tee -a ${_logFile}
-#
-echo "`date` - INFO: az network public-ip show ${_pubIpName2}..." | tee -a ${_logFile}
-_ipAddr2=`az network public-ip show --name ${_pubIpName2} | \
-	 jq '. | {ipaddr: .ipAddress}' | \
-	 grep ipaddr | \
-	 awk '{print $2}' | \
-	 sed 's/"//g'`
-if (( $? != 0 )); then
-	echo "`date` - FAIL: az network public-ip show ${_pubIpName2}" | tee -a ${_logFile}
-	exit 1
-fi
-echo "`date` - INFO: public IP ${_ipAddr2} on ${_vmName2}..." | tee -a ${_logFile}
-#
-echo "`date` - INFO: az network public-ip show ${_pubIpName3}..." | tee -a ${_logFile}
-_ipAddr3=`az network public-ip show --name ${_pubIpName3} | \
-	 jq '. | {ipaddr: .ipAddress}' | \
-	 grep ipaddr | \
-	 awk '{print $2}' | \
-	 sed 's/"//g'`
-if (( $? != 0 )); then
-	echo "`date` - FAIL: az network public-ip show ${_pubIpName3}" | tee -a ${_logFile}
-	exit 1
-fi
-echo "`date` - INFO: public IP ${_ipAddr3} on ${_vmName3}..." | tee -a ${_logFile}
+fi 
+echo "`date` - INFO: public IP ${_ipAddr} for ${_vmName}..." | tee -a ${_logFile}
 #
 #--------------------------------------------------------------------------------
-# Obtain the private/internal IP addresses for future use within the script...
+# Obtain the private IP addresses for future use within the script...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: az vm list-ip-addresses --name ${_vmName1}..." | tee -a ${_logFile}
-_internalIpAddr1=`az vm list-ip-addresses --name ${_vmName1} --output table | tail -1 | awk '{print $3}'`
+echo "`date` - INFO: az network nic show ${_nicName}..." | tee -a ${_logFile}
+_privateIp=`az network nic show --name ${_nicName} | \
+		jq '.ipConfigurations[0] .privateIPAddress' | \
+		sed 's/"//g'`
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az vm list-ip-addresses --name ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: az network nic show ${_nicName}" | tee -a ${_logFile}
 	exit 1
-fi
-echo "`date` - INFO: internal IP ${_internalIpAddr1} on ${_vmName1}..." | tee -a ${_logFile}
-#
-echo "`date` - INFO: az vm list-ip-addresses --name ${_vmName2}..." | tee -a ${_logFile}
-_internalIpAddr2=`az vm list-ip-addresses --name ${_vmName2} --output table | tail -1 | awk '{print $3}'`
-if (( $? != 0 )); then
-	echo "`date` - FAIL: az vm list-ip-addresses --name ${_vmName2}" | tee -a ${_logFile}
+fi 
+if [[ "${_privateIp}" = "null" ]]; then
+	echo "`date` - FAIL: az network nic show ${_nicName} returned NULL" | tee -a ${_logFile}
 	exit 1
-fi
-echo "`date` - INFO: internal IP ${_internalIpAddr2} on ${_vmName2}..." | tee -a ${_logFile}
+fi 
+echo "`date` - INFO: private IP ${_privateIp} for ${_vmName}..." | tee -a ${_logFile}
 #
 #--------------------------------------------------------------------------------
 # Remove any previous entries of the IP address from the "known hosts" config
 # file...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: ssh-keygen to clean known hosts..." | tee -a ${_logFile}
-ssh-keygen -f "${HOME}/.ssh/known_hosts" -R ${_ipAddr1} >> ${_logFile} 2>&1
-ssh-keygen -f "${HOME}/.ssh/known_hosts" -R ${_ipAddr2} >> ${_logFile} 2>&1
-ssh-keygen -f "${HOME}/.ssh/known_hosts" -R ${_ipAddr3} >> ${_logFile} 2>&1
+ssh-keygen -f "${HOME}/.ssh/known_hosts" -R ${_ipAddr} >> ${_logFile} 2>&1
 #
 #--------------------------------------------------------------------------------
-# Create an Azure load balancer to "front-end" the VIP used in the PCS cluster...
+# SSH into the first VM to create a directory mount-point for the soon-to-be-created
+# filesystem in which Oracle database files will reside...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: az network lb create --name ${_lbName}..." | tee -a ${_logFile}
-az network lb create \
-	--name ${_lbName} \
-	--private-ip-address ${_pcsVipAddr} \
-	--sku Standard \
-	--vnet-name ${_vnetName} \
-	--subnet ${_subnetName} \
-	--backend-pool-name ${_lbPoolName} \
-	--tags owner=${_azureOwner} project=${_azureProject} \
-	--verbose >> ${_logFile} 2>&1
+echo "`date` - INFO: mkdir ${_oraMntDir} on ${_vmName}..." | tee -a ${_logFile}
+ssh -o StrictHostKeyChecking=no ${_azureOwner}@${_ipAddr} "sudo mkdir -p ${_oraMntDir}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az network lb create --name ${_lbName}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo mkdir -p ${_oraMntDir} on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# Add an address to the back-end address pool for the first database server VM...
+# If no data disks are requested on the VM, then deploy Azure NetApp Files...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: az network lb address-pool address add --name ${_lbPoolName}-01..." | tee -a ${_logFile}
-az network lb address-pool address add \
-	--name ${_lbPoolName}-01 \
-	--pool-name ${_lbPoolName} \
-	--lb-name ${_lbName} \
-	--vnet ${_vnetName} \
-	--ip-address=${_internalIpAddr1} \
-	--verbose >> ${_logFile} 2>&1
+if (( ${_vmDataDiskNbr} <= 0 ))
+then
+	#
+	echo "`date` - INFO: no data disks requested, Azure NetApp Files it is!" | tee -a ${_logFile}
+	#
+	#--------------------------------------------------------------------------------
+	# Obtain the private IP address of the VM for future use within the script...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az network nic ip-config show ${_nicName}..." | tee -a ${_logFile}
+	_privateipAddr=`az network nic ip-config show --nic-name ${_nicName} --name ipconfig1 | \
+		jq '. | {ipaddr: .privateIpAddress}' | \
+		grep ipaddr | \
+		awk '{print $2}' | \
+		sed 's/"//g'`
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az network nic ip-config show ${_nicName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Create Azure NetApp Files Delegated Subnet
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az network vnet subnet create ${_ANFsubnetName}..." | tee -a ${_logFile}
+	az network vnet subnet create \
+		--name ${_ANFsubnetName} \
+		--vnet-name ${_vnetName} \
+		--delegation Microsoft.Netapp/volumes \
+		--address-prefixes 10.0.1.0/24 \
+		--verbose >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az network vnet subnet create ${_ANFsubnetName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Create the Azure NetApp Files (ANF) NetApp Account
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az netappfiles account create ${_ANFaccountName}..." | tee -a ${_logFile}
+	az netappfiles account create \
+		--account-name ${_ANFaccountName} \
+		--tags owner=${_azureOwner} project=${_azureProject} \
+		--verbose >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az netappfiles account create ${_ANFaccountName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Create the ANF Capacity Pool
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az netappfiles pool create ${_ANFpoolName}..." | tee -a ${_logFile}
+	az netappfiles pool create \
+		--account-name ${_ANFaccountName} \
+		--pool-name ${_ANFpoolName} \
+		--service-level Ultra \
+		--size 4 \
+		--tags owner=${_azureOwner} project=${_azureProject} \
+		--verbose >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az netappfiles pool create ${_ANFpoolName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Create the ANF Volume
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az netappfiles volume create ${_ANFvolumeName}..." | tee -a ${_logFile}
+	az netappfiles volume create \
+		--account-name ${_ANFaccountName} \
+		--pool-name ${_ANFpoolName} \
+		--volume-name ${_ANFvolumeName} \
+		--file-path ${_ANFvolumeName}\
+		--usage-threshold 4096 \
+		--vnet ${_vnetName} \
+		--subnet ${_ANFsubnetName} \
+		--protocol-types NFSv3 \
+		--kerberos-enabled false \
+		--allowed-clients ${_privateIp} \
+		--rule-index 1 \
+		--verbose >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az netappfiles volume create ${_ANFvolumeName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Add a rule to the NFS export policy for our VM at index 2
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az netappfiles volume export-policy create for ${_privateipAddr}..." | tee -a ${_logFile}
+	az netappfiles volume export-policy add \
+		--account-name ${_ANFaccountName} \
+		--pool-name ${_ANFpoolName} \
+		--volume-name ${_ANFvolumeName} \
+		--allowed-clients ${_privateipAddr} \
+		--rule-index 2 \
+		--nfsv41 false \
+		--nfsv3 true \
+		--cifs false \
+		--unix-read-only false \
+		--unix-read-write true \
+		--verbose >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az netappfiles volume export-policy create for ${_privateipAddr}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Remove the default rule from the volume export policy at index 1
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az netappfiles volume export-policy remove for 0.0.0.0/0..." | tee -a ${_logFile}
+	az netappfiles volume export-policy remove \
+		--account-name ${_ANFaccountName} \
+		--pool-name ${_ANFpoolName} \
+		--volume-name ${_ANFvolumeName} \
+		--rule-index 1 \
+		--verbose >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az netappfiles volume export-policy remove for 0.0.0.0/0" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Get the Azure NetApp Files endpoint IP address
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: az netappfiles volume show ${_ANFvolumeName}..." | tee -a ${_logFile}
+	_ANFipAddr=`az netappfiles volume show \
+			--account-name ${_ANFaccountName} \
+			--pool-name ${_ANFpoolName} \
+			--volume-name ${_ANFvolumeName} | \
+			jq '.mountTargets[0].ipAddress' | \
+			sed 's/"//g'`
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: az netappfiles volume show ${_ANFvolumeName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	echo "`date` - INFO: IP ${_ANFipAddr} for volume ${_ANFvolumeName}..." | tee -a ${_logFile}
+	#
+	#--------------------------------------------------------------------------------
+	# SSH into the first VM to mount the newly created Azure NetApp Files
+	# NFS volume in which the Oracle database files will reside...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: mount ${_ANFvolumeName} on ${_vmName}..." | tee -a ${_logFile}
+	ssh -o StrictHostKeyChecking=no ${_azureOwner}@${_ipAddr} "\
+		sudo mount -t nfs \
+			-o rw,hard,rsize=1048576,wsize=1048576,sec=sys,vers=3,tcp \
+			${_ANFipAddr}:/${_ANFvolumeName} ${_oraMntDir}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: mount ${_ANFvolumeName} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# SSH into the first VM to ensure that the mount-point has correct permissions...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: chown ${_oraOsAcct}:${_oraOsGroup} ${_oraMntDir} on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraMntDir}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraMntDir} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	echo "`date` - INFO: chmod 777 ${_oraMntDir} on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo chmod 777 ${_oraMntDir}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: sudo chmod 777 ${_oraMntDir} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Enable dNFS in the Oracle software installation...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: enable dNFS on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"cd ${_oraHome}/rdbms/lib; make -f ins_rdbms.mk dnfs_on\"" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: \"make -f ins_rdbms.mk dnfs_on\" on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# If there is no entry for the ANF volume in "/etc/fstab" on the Azure VM, then
+	# create an entry to simplify VM restart...
+	#--------------------------------------------------------------------------------
+	_fstabOutput=`ssh ${_azureOwner}@${_ipAddr} "grep \"/${_ANFvolumeName} \" /etc/fstab"`
+	if [[ "${_fstabOutput}" = "" ]]
+	then
+		_mountOutput=`ssh ${_azureOwner}@${_ipAddr} "mount | grep \"/${_ANFvolumeName} \""`
+		if [[ "${_mountOutput}" = "" ]]
+		then
+			echo "`date` - FAIL: output from \"mount\" for ${_ANFvolumeName} on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+		_mountOpts=`echo ${_mountOutput} | awk '{print $6}' | sed 's/(//g' | sed 's/)//g'`
+		if [[ "${_mountOpts}" = "" ]]
+		then
+			echo "`date` - FAIL: parse mount options from \"${_mountOutput}\"" | tee -a ${_logFile}
+			exit 1
+		fi
+		ssh ${_azureOwner}@${_ipAddr} "sudo su - root -c \"echo '${_ANFipAddr}:/${_ANFvolumeName} ${_oraMntDir} nfs ${_mountOpts} 0 0' >> /etc/fstab\"" >> ${_logFile} 2>&1
+		if (( $? != 0 )); then
+			echo "`date` - FAIL: append \"${_ANFvolumeName}\" to \"/etc/fstab\" on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+	fi
+	#
+else # ...else if _nbrDataDisks > 0, then use managed disks for database storage...
+	#
+	#--------------------------------------------------------------------------------
+	# SSH into the first VM to install the "LVM2" package using the Linux "yum"
+	# utility...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: yum install -y lvm2 xfsprogs xfsdump on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo yum install -y lvm2 xfsprogs xfsdump" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: yum install -y lvm2 xfsprogs xfsdump on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Loop to attach the specified number of data disks...
+	#--------------------------------------------------------------------------------
+	typeset -i _diskAttached=0
+	_pvList=""
+	while (( ${_diskAttached} < ${_vmDataDiskNbr} )); do
+		#
+		#------------------------------------------------------------------------
+		# Increment the counter of attached data disks...
+		#------------------------------------------------------------------------
+		typeset -i _diskAttached=${_diskAttached}+1
+		_diskNbr="`echo ${_diskAttached} | awk '{printf("%02d\n",$1)}'`"
+		#
+		#------------------------------------------------------------------------
+		# Create and attach a data disk to the VM...
+		#------------------------------------------------------------------------
+		echo "`date` - INFO: az vm disk attach (${_vmName}-datadisk${_diskNbr})..." | tee -a ${_logFile}
+		az vm disk attach \
+			--new \
+			--name ${_vmName}-datadisk${_diskNbr} \
+			--vm-name ${_vmName} \
+			--caching ${_vmDataDiskCaching} \
+			--size-gb ${_vmDataDiskSzGB} \
+			--sku Premium_LRS \
+			--verbose >> ${_logFile} 2>&1
+		if (( $? != 0 )); then
+			echo "`date` - FAIL: az vm disk create ${_vmName} (${_diskAttached})" | tee -a ${_logFile}
+			exit 1
+		fi
+		#
+		#------------------------------------------------------------------------
+		# Identify the name of the SCSI device from the array initialized at the
+		# beginning of the script, and derive the name of the single partition on
+		# the SCSI device, then add to the list of SCSI partitions for later use...
+		#------------------------------------------------------------------------
+		_scsiDev="/dev/${_scsiDevList[${_diskAttached}]}"
+		_pvName="${_scsiDev}1"
+		_pvList="${_pvList}${_pvName} "
+		#
+		#------------------------------------------------------------------------
+		# SSH into the VM to create a GPT label on the SCSI device...
+		#------------------------------------------------------------------------
+		echo "`date` - INFO: parted ${_scsiDev} mklabel on ${_vmName}..." | tee -a ${_logFile}
+		ssh ${_azureOwner}@${_ipAddr} "sudo parted ${_scsiDev} mklabel gpt" >> ${_logFile} 2>&1
+		if (( $? != 0 )); then
+			echo "`date` - FAIL: parted ${_scsiDev} mklabel gpt on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+		#
+		#------------------------------------------------------------------------
+		# SSH into the VM to create a single primary partitition consuming the
+		# entire SCSI device...
+		#------------------------------------------------------------------------
+		echo "`date` - INFO: parted ${_scsiDev} mkpart primary on ${_vmName}..." | tee -a ${_logFile}
+		ssh ${_azureOwner}@${_ipAddr} "sudo parted -a opt ${_scsiDev} mkpart primary xfs 0% 100%" >> ${_logFile} 2>&1
+		if (( $? != 0 )); then
+			echo "`date` - FAIL: parted mkpart -a opt ${_scsiDev} primary xfs 0% 100% on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+		#
+		#------------------------------------------------------------------------
+		# SSH into the VM to create a physical partition from the SCSI partition...
+		#------------------------------------------------------------------------
+		echo "`date` - INFO: pvcreate ${_pvName} on ${_vmName}..." | tee -a ${_logFile}
+		ssh ${_azureOwner}@${_ipAddr} "sudo pvcreate ${_pvName}" >> ${_logFile} 2>&1
+		if (( $? != 0 )); then
+			echo "`date` - FAIL: pvcreate ${_pvName} on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+		#
+	done
+	#
+	#--------------------------------------------------------------------------------
+	# Create a volume group from the list of physcial volumes...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: vgcreate ${_vgName} ${_pvList} on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo vgcreate ${_vgName} ${_pvList}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: vgcreate ${_vgName} ${_pvList} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# Obtain the PE Size and Total # of PEs in the volume group, to obtain the size
+	# (in MiB) of all the physical volumes in the volume group, which will be the
+	# size of the soon-to-be-created logical volume...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: vgdisplay ${_vgName} on ${_vmName}..." | tee -a ${_logFile}
+	_peTotal=`ssh ${_azureOwner}@${_ipAddr} "sudo vgdisplay ${_vgName} | grep 'Total PE' | awk '{print \\\$3}'"`
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: vgdisplay ${_vgName} | grep 'Total PE' on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	_peSize=`ssh ${_azureOwner}@${_ipAddr} "sudo vgdisplay ${_vgName} | grep 'PE Size' | awk '{print \\\$3}'"`
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: vgdisplay ${_vgName} | grep 'PE Size' on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	typeset -i _lvSize=`echo ${_peTotal} ${_peSize} | awk '{printf("%d\n",$1*$2)}'`
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: awk '{printf(${_peTotal} * ${_peSize})" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# SSH into the VM to create a logical volume from the allocated data disks...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: lvcreate ${_vgName} on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo lvcreate -n ${_lvName} -i ${_vmDataDiskNbr} -I 1024k -L ${_lvSize}m ${_vgName} ${_pvList}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: lvcreate -n ${_lvName} -i ${_vmDataDiskNbr} -I 1024k -L ${_lvSize}m ${_vgName} ${_pvList} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# SSH into the VM to create an XFS filesystem on the logical volume...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: mkfs -t xfs /dev/${_vgName}/${_lvName} on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo mkfs -t xfs /dev/${_vgName}/${_lvName}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: mkfs -t xfs /dev/${_vgName}/${_lvName} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# SSH into the VM to mount the filesystem on "/u02"...
+	#--------------------------------------------------------------------------------
+	echo "`date` - INFO: mount /dev/${_vgName}/${_lvName} ${_oraMntDir} on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo mount /dev/${_vgName}/${_lvName} ${_oraMntDir}" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: mount /dev/${_vgName}/${_lvName} ${_oraMntDir} on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+	#
+	#--------------------------------------------------------------------------------
+	# If there is no entry for the logical volume in "/etc/fstab" on the Azure VM, then
+	# create an entry to simplify VM restart...
+	#--------------------------------------------------------------------------------
+	_fstabOutput=`ssh ${_azureOwner}@${_ipAddr} "grep \"${_vgName}-${_lvName} \" /etc/fstab"`
+	if [[ "${_fstabOutput}" = "" ]]
+	then
+		_mountOutput=`ssh ${_azureOwner}@${_ipAddr} "mount | grep \"${_vgName}-${_lvName} \""`
+		if [[ "${_mountOutput}" = "" ]]
+		then
+			echo "`date` - FAIL: output from \"mount\" for ${_vgName}-${_lvName} on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+		_mountOpts=`echo ${_mountOutput} | awk '{print $6}' | sed 's/(//g' | sed 's/)//g'`
+		if [[ "${_mountOpts}" = "" ]]
+		then
+			echo "`date` - FAIL: parse mount options from \"${_mountOutput}\"" | tee -a ${_logFile}
+			exit 1
+		fi
+		ssh ${_azureOwner}@${_ipAddr} "sudo su - root -c \"echo '/dev/mapper/${_vgName}-${_lvName} ${_oraMntDir} xfs ${_mountOpts} 0 0' >> /etc/fstab\"" >> ${_logFile} 2>&1
+		if (( $? != 0 )); then
+			echo "`date` - FAIL: append \"${_lvName} ${_oraMntDir}\" to \"/etc/fstab\" on ${_vmName}" | tee -a ${_logFile}
+			exit 1
+		fi
+	fi
+	#
+fi
+#
+#--------------------------------------------------------------------------------
+# SSH into the VM to ensure that the Resource Disk is configured and managed by
+# the Azure Linux agent...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: configure waagent to manage resource disk on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo sed -i.old1 -e 's/^ResourceDisk.Format=n$/ResourceDisk.Format=y/' /etc/waagent.conf" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az network lb address-pool address add --name ${_lbPoolName}-01" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo sed ResourceDisk.Format=y in /etc/waagent.conf on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# Add an address to the back-end address pool for the second database server VM...
+# SSH into the VM to retrieve the path of the Resource Disk...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: az network lb address-pool address add --name ${_lbPoolName}-02..." | tee -a ${_logFile}
-az network lb address-pool address add \
-	--name ${_lbPoolName}-02 \
-	--pool-name ${_lbPoolName} \
-	--lb-name ${_lbName} \
-	--vnet ${_vnetName} \
-	--ip-address=${_internalIpAddr2} \
-	--verbose >> ${_logFile} 2>&1
+echo "`date` - INFO: retrieve resource disk mount point from /etc/waagent.conf on ${_vmName}..." | tee -a ${_logFile}
+_vmResourceDir=`ssh ${_azureOwner}@${_ipAddr} "sudo grep '^ResourceDisk.MountPoint=' /etc/waagent.conf" | awk -F= '{print $2}'`
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az network lb address-pool address add --name ${_lbPoolName}-02" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo grep ResourceDisk.MountPoint from /etc/waagent.conf on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
-#
-#--------------------------------------------------------------------------------
-# Create a health probe for the Azure load balancer to front-end the VIP...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: az network lb probe create --name ${_lbProbeName}..." | tee -a ${_logFile}
-az network lb probe create \
-	--name ${_lbProbeName} \
-	--lb-name ${_lbName} \
-	--port ${_lbProbePort} \
-	--protocol tcp \
-	--interval 5 \
-	--threshold 2 \
-	--verbose >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: az network lb probe create --name ${_lbProbeName}" | tee -a ${_logFile}
+if [[ "${_vmResourceDir}" = "" ]]
+then
+	echo "`date` - FAIL: no ResourceDisk.MountPoint set in /etc/waagent.conf on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
-#
-#--------------------------------------------------------------------------------
-# Create a health probe for the Azure load balancer to front-end the VIP...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: az network lb rule create --name ${_lbRuleName}..." | tee -a ${_logFile}
-az network lb rule create \
-	--name ${_lbRuleName} \
-	--lb-name ${_lbName} \
-	--backend-pool-name ${_lbPoolName} \
-	--probe-name ${_lbProbeName} \
-	--protocol all \
-	--frontend-port 0 \
-	--backend-port 0 \
-	--idle-timeout 30 \
-	--floating-ip true \
-	--verbose >> ${_logFile} 2>&1
+ssh ${_azureOwner}@${_ipAddr} "if [ -d ${_vmResourceDisk} ]; then exit 0; else exit 1; fi" | tee -a ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: az network lb rule create --name ${_lbRuleName}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to copy the file "oraInst.loc" from the current Oracle
-# Inventory default location into the "/etc" system directory, where it can be
-# easily found by any Oracle programs accessing the host.  Set the ownership and
-# permissions appropriately for the copied file...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: copy oraInst.loc file on ${_vmName1}" | tee -a ${_logFile}
-ssh -o StrictHostKeyChecking=no ${_azureOwner}@${_ipAddr1} "sudo cp ${_oraInvDir}/oraInst.loc /etc" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo cp ${_azureOwner}@${_ipAddr1}:${_oraInvDir}/oraInst.loc /etc on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo chown ${_oraOsAcct}:${_oraOsGroup} /etc/oraInst.loc" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chown ${_oraOsAcct}:${_oraOsGroup} /etc/oraInst.loc on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo chmod 644 /etc/oraInst.loc" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chmod 644 /etc/oraInst.loc on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to copy the file "oraInst.loc" from the current Oracle
-# Inventory default location into the "/etc" system directory, where it can be
-# easily found by any Oracle programs accessing the host.  Set the ownership and
-# permissions appropriately for the copied file...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: copy oraInst.loc file on ${_vmName2}" | tee -a ${_logFile}
-ssh -o StrictHostKeyChecking=no ${_azureOwner}@${_ipAddr2} "sudo cp ${_oraInvDir}/oraInst.loc /etc" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo cp ${_azureOwner}@${_ipAddr2}:${_oraInvDir}/oraInst.loc /etc on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo chown ${_oraOsAcct}:${_oraOsGroup} /etc/oraInst.loc" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chown ${_oraOsAcct}:${_oraOsGroup} /etc/oraInst.loc on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo chmod 644 /etc/oraInst.loc" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chmod 644 /etc/oraInst.loc on ${_vmName2}" | tee -a ${_logFile}
+	echo "`date` - FAIL: ResourceDisk.MountPoint (${_vmResourceDisk}) does not exist on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #------------------------------------------------------------------------
-# SSH into the first VM to determine how much physical RAM there is, then
+# SSH into the VM to determine how much physical RAM there is and then
 # use the RHEL7 formula to determine needed swap space, and then configure
 # the Azure Linux agent (waagent) to recreate upon boot...
 #------------------------------------------------------------------------
-echo "`date` - INFO: free -m to find physical RAM on ${_vmName1}..." | tee -a ${_logFile}
-typeset -i _ramMB=`ssh ${_azureOwner}@${_ipAddr1} "free -m | grep '^Mem:' | awk '{print \\\$2}'" 2>&1`
+echo "`date` - INFO: free -m to find physical RAM on ${_vmName}..." | tee -a ${_logFile}
+typeset -i _ramMB=`ssh ${_azureOwner}@${_ipAddr} "free -m | grep '^Mem:' | awk '{print \\\$2}'" 2>&1`
 if (( $? != 0 )); then
-	echo "`date` - FAIL: free -m on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: free -m on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 if [[ "${_ramMB}" = "" ]]
@@ -1003,235 +1143,162 @@ else
 		fi
 	fi
 fi
-echo "`date` - INFO: configure waagent for ${_swapMB}M swap on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo sed -i.old -e 's/^ResourceDisk.EnableSwap=n$/ResourceDisk.EnableSwap=y/' -e 's/^ResourceDisk.SwapSizeMB=0$/ResourceDisk.SwapSizeMB='${_swapMB}'/' /etc/waagent.conf" >> ${_logFile} 2>&1
+echo "`date` - INFO: configure waagent for ${_swapMB}M swap on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo sed -i.old2 -e 's/^ResourceDisk.EnableSwap=n$/ResourceDisk.EnableSwap=y/' -e 's/^ResourceDisk.SwapSizeMB=.*$/ResourceDisk.SwapSizeMB='${_swapMB}'/' /etc/waagent.conf" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed /etc/waagent.conf on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo sed /etc/waagent.conf on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
-echo "`date` - INFO: configure waagent for ${_swapMB}M swap on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo sed -i.old -e 's/^ResourceDisk.EnableSwap=n$/ResourceDisk.EnableSwap=y/' -e 's/^ResourceDisk.SwapSizeMB=0$/ResourceDisk.SwapSizeMB='${_swapMB}'/' /etc/waagent.conf" >> ${_logFile} 2>&1
+#
+#------------------------------------------------------------------------
+# SSH into first VM to create sub-directories for the Oracle database
+# files, the Oracle Fast Recovery Area (FRA) files, and the Oracle
+# archived redo log files...
+#------------------------------------------------------------------------
+echo "`date` - INFO: mkdir ${_oraDataDir} ${_oraFRADir} ${_oraArchDir} on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo mkdir -p ${_oraDataDir} ${_oraFRADir} ${_oraArchDir}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed /etc/waagent.conf on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-echo "`date` - INFO: configure waagent for ${_swapMB}M swap on ${_vmName3}..." | tee -a ${_logFile}
-ssh -o StrictHostKeyChecking=no ${_azureOwner}@${_ipAddr3} "sudo sed -i.old -e 's/^ResourceDisk.EnableSwap=n$/ResourceDisk.EnableSwap=y/' -e 's/^ResourceDisk.SwapSizeMB=0$/ResourceDisk.SwapSizeMB='${_swapMB}'/' /etc/waagent.conf" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed /etc/waagent.conf on ${_vmName3}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo mkdir -p ${_oraDataDir} ${_oraFRADir} ${_oraArchDir} on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to install the LVM2 package and the "nc" (netcap) program...
+# SSH into the first VM to set the OS account:group ownership of the mount-points...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: yum install -y lvm2 nc on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo yum install -y lvm2 nc" >> ${_logFile} 2>&1
+echo "`date` - INFO: chown ${_oraOsAcct}:${_oraOsGroup} ${_oraDataDir} ${_oraFRADir} ${_oraArchDir} on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraDataDir} ${_oraFRADir} ${_oraArchDir}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum install -y lvm2 nc on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraDataDir} ${_oraFRADir} ${_oraArchDir} on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to perform an update of all OS packages to be sure that
-# all OS packages are up-to-date...
+# SSH into the first VM to copy the file "oraInst.loc" from the current Oracle
+# Inventory default location into the "/etc" system directory, where it can be
+# easily found by any Oracle programs accessing the host.  Set the ownership and
+# permissions appropriately for the copied file...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: 1st yum update -y on ${_vmName1} (be prepared - long wait)..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo yum update -y" >> ${_logFile} 2>&1
+echo "`date` - INFO: copy oraInst.loc file on ${_vmName}" | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo cp -n ${_oraInvDir}/oraInst.loc /etc" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum update -y on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo cp -n ${_azureOwner}@${_ipAddr}:${_oraInvDir}/oraInst.loc /etc" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo chown ${_oraOsAcct}:${_oraOsGroup} /etc/oraInst.loc" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo chown ${_oraOsAcct}:${_oraOsGroup} /etc/oraInst.loc" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo chmod 644 /etc/oraInst.loc" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo chmod 644 /etc/oraInst.loc" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# ...then run an update again, because sometimes things are missed the first time
-# around...
+# Perform an update of all OS packages to be sure that all are up-to-date...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: 2nd yum update -y on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo yum update -y" >> ${_logFile} 2>&1
+echo "`date` - INFO: yum update on ${_vmName} (1: be prepared - long wait)..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo yum update -y" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum update -y on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo yum update #1 on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the second VM to install the LVM2 package and the "nc" (netcap) program...
+# Now, perform another update of all OS packages, because often the first update
+# doesn't get all of them...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: yum install -y lvm2 nc on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo yum install -y lvm2 nc" >> ${_logFile} 2>&1
+echo "`date` - INFO: 2nd yum update on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo yum update -y" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum install -y lvm2 nc on ${_vmName2}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo yum update #2 on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the second VM to perform an update of all OS packages to be sure that
-# all OS packages are up-to-date...
+# Install the CIFS-UTILS package on the VM...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: 1st yum update -y on ${_vmName2} (be prepared - long wait)..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo yum update -y" >> ${_logFile} 2>&1
+echo "`date` - INFO: yum install cifs-utils on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo yum install cifs-utils -y" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum update -y on ${_vmName2}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo yum install cifs-utils on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# ...then run an update again, because sometimes things are missed the first time
-# around...
+# Re-set the contents of the ".cred" file within "/etc/smbcredentials" folder...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: 2nd yum update -y on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo yum update -y" >> ${_logFile} 2>&1
+_cifsCredDir=/etc/smbcredentials
+_cifsCredFile=${_cifsCredDir}/${_saName}.cred
+echo "`date` - INFO: set contents of ${_cifsCredFile} on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo mkdir -p ${_cifsCredDir}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum update -y on ${_vmName2}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo mkdir -p ${_cifsCredDir} on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo rm -f ${_cifsCredFile}" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo echo rm -f ${_cifsCredFile} on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "echo username=${_saName} | sudo tee ${_cifsCredFile} > /dev/null" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: echo username=${_saName} | sudo tee ${_cifsCredFile} on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo chmod 600 ${_cifsCredFile}" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo chmod 600 ${_cifsCredFile} on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "echo password=${_saKey} | sudo tee -a ${_cifsCredFile} > /dev/null" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: echo password=${_saKey} | sudo tee -a ${_cifsCredFile} on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to create a directory mount-point for the soon-to-be-created
-# filesystem in which Oracle database files will reside, and then set the OS
-# account:group ownership appropriately...
+# Extract the CIFS/SMB path from the SMB HTTPS string and append the share name...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: mkdir/chown ${_oraMntDir} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo mkdir ${_oraMntDir}" >> ${_logFile} 2>&1
+_cifsPath="`echo ${_saHttps} | sed 's/https://'`${_shareName}"
+#
+#--------------------------------------------------------------------------------
+# Retrieve numeric IDs for "oracle" OS account and OS group...
+#--------------------------------------------------------------------------------
+_oraUid=`ssh ${_azureOwner}@${_ipAddr} "grep ${_oraOsAcct} /etc/passwd" | awk -F: '{print $3}' 2>&1`
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo mkdir ${_oraMntDir} on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: grep ${_oraOsAcct} /etc/passwd for UID on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraMntDir}" >> ${_logFile} 2>&1
+_oraGid=`ssh ${_azureOwner}@${_ipAddr} "grep ${_oraOsAcct} /etc/passwd" | awk -F: '{print $4}' 2>&1`
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chown ${_oraMntDir} on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: grep ${_oraOsAcct} /etc/passwd for GID on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the second VM to create a directory mount-point for the soon-to-be-created
-# filesystem in which Oracle database files will reside, and then set the OS
-# account:group ownership appropriately...
+# Compile the CIFS/SMB options string to use when mounting...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: mkdir/chown ${_oraMntDir} on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo mkdir ${_oraMntDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo mkdir ${_oraMntDir} on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraMntDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chown ${_oraMntDir} on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
+_cifsOptions="vers=3.0,credentials=${_cifsCredFile},serverino,cache=none,uid=${_oraUid},gid=${_oraGid}"
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to determine if Ephemeral/Temporary SSD exists under the
-# "/mnt/resource" mount-point.
-#
-# If "/mnt/resource" is mounted upon "/dev/sdb", then Ephemeral/Temporary SSD
-# exists.  If the "/mnt/resource" is mounted on "/dev/sda" or elsewhere, then
-# ephemeral/temporary SSD does not exist on this VM instance type...
+# Mount the Azure File standard share for the Oracle archived redo log files...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: df -h /mnt/resource on ${_vmName1}..." | tee -a ${_logFile}
-_scsiDevName="sdb"
-if [[ "`ssh ${_azureOwner}@${_ipAddr1} "df -h /mnt/resource | tail -1 | awk '{print $1}' | grep ${_scsiDevName}" 2>&1`" != "" ]]
-then
-	_scsiDevName="sdc"
-fi
-_scsiDev="/dev/${_scsiDevName}"
-_pvName="${_scsiDev}1"
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a volume label on the shared disk...
-# 
-# If the shared disk is less than 2 TB in size, then use "msdos" volume label,
-# but if it is larger, then we must use "GPT" volume label format...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: parted ${_scsiDev} mklabel gpt on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo parted ${_scsiDev} mklabel gpt" >> ${_logFile} 2>&1
+echo "`date` - INFO: mount -t cifs ${_cifsPath} ${_oraArchDir} on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo mount -t cifs ${_cifsPath} ${_oraArchDir} -o ${_cifsOptions}" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo parted ${_scsiDev} mklabel gpt on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: sudo mount -t cifs ${_cifsPath} ${_oraArchDir} -o ${_cifsOptions} on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to create a single primary partitition consuming the
-# entire shared disk...
+# Set mount options for permanent setting after reboot in /etc/fstab...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: sudo parted -a opt ${_scsiDev} mkpart primary ${_fsType} 0% 100%..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo parted -a opt ${_scsiDev} mkpart primary ${_fsType} 0% 100%" >> ${_logFile} 2>&1
+echo "`date` - INFO: set CIFS/SMB info into /etc/fstab on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "echo ${_cifsPath} ${_oraArchDir} cifs ${_cifsOptions} 0 0 | sudo tee -a /etc/fstab" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo parted mkpart -a opt ${_scsiDev} primary ${_fsType} 0% 100% on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a "physical volume" from the primary SCSI
-# partition on the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pvcreate ${_pvName} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pvcreate ${_pvName}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pvcreate ${_pvName} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a "volume group" consisting of the single
-# "physical volume" from the primary SCSI partition on the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: vgcreate ${_vgName} ${_pvName} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo vgcreate ${_vgName} ${_pvName}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo vgcreate ${_vgName} ${_pvName} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a "logical volume" on the "volume group" of
-# the shared disk...
-#--------------------------------------------------------------------------------
-typeset -i _vmDataDiskMB=${_vmDataDiskSize}*1024
-typeset -i _vmDataDiskMB=${_vmDataDiskMB}-4
-echo "`date` - INFO: lvcreate -n ${_lvName} -L ${_vmDataDiskMB}m ${_vgName} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo lvcreate -n ${_lvName} -L ${_vmDataDiskMB}m ${_vgName}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo lvcreate -n ${_lvName} -L ${_vmDataDiskMB}m ${_vgName} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create an EXT4 filesystem on the "logical volume" on
-# the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: mkfs.${_fsType} /dev/${_vgName}/${_lvName} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo mkfs.${_fsType} /dev/${_vgName}/${_lvName}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo mkfs.${_fsType} /dev/${_vgName}/${_lvName} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to mount the newly-created filesystem on the shared disk
-# onto the newly-created directory mount-point...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: mount /dev/${_vgName}/${_lvName} ${_oraMntDir} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo mount /dev/${_vgName}/${_lvName} ${_oraMntDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo mount /dev/${_vgName}/${_lvName} ${_oraMntDir} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create sub-directories for the Oracle database files
-# and for the Oracle Flash Recovery Area (FRA) files, then set OS account:group
-# ownership...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: mkdir/chown ${_oraDataDir} ${_oraFRADir} ${_oraConfDir} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo mkdir -p ${_oraDataDir} ${_oraFRADir} ${_oraConfDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo mkdir ${_oraDataDir} ${_oraFRADir} ${_oraConfDir} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo chown ${_oraOsAcct}:${_oraOsGroup} ${_oraDataDir} ${_oraFRADir} ${_oraConfDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo chown ${_oraDataDir} ${_oraFRADir} ${_oraConfDir} on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: echo ${_cifsPath} ${_oraArchDir} cifs ${_cifsOptions} 0 0 | sudo tee -a /etc/fstab on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
@@ -1239,8 +1306,12 @@ fi
 # SSH into the first VM to run the Oracle Database Creation Assistant (DBCA)
 # program to create a new primary Oracle database...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: dbca -createDatabase ${_oraSid} on ${_vmName1} (be prepared - long wait)..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"\
+echo "`date` - INFO: dbca -createDatabase ${_oraSid} on ${_vmName} (be prepared - long wait)..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"\
+	export ORACLE_SID=${_oraSid}
+	export ORACLE_HOME=${_oraHome}
+	export PATH=${_oraHome}/bin:\${PATH}
+	unset TNS_ADMIN
 	dbca -silent -createDatabase \
 		-gdbName ${_oraSid} \
 		-templateName ${_oraHome}/assistants/dbca/templates/General_Purpose.dbc \
@@ -1248,711 +1319,537 @@ ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"\
 		-sysPassword ${_oraSysPwd} \
 		-systemPassword ${_oraSysPwd} \
 		-characterSet ${_oraCharSet} \
-		-createListener ${_oraLsnr}:${_oraLsnrPort} \
+		-createListener LISTENER:${_oraLsnrPort} \
 		-storageType FS \
 		-datafileDestination ${_oraDataDir} \
 		-enableArchive TRUE \
-		-memoryMgmtType AUTO_SGA \
-		-memoryPercentage 70 \
+		-memoryMgmtType ${_oraMemType} \
+		-memoryPercentage ${_oraMemPct} \
+		-initParams db_create_online_log_dest_1=${_oraFRADir},log_archive_dest_1=\"location=${_oraArchDir}\" \
 		-recoveryAreaDestination ${_oraFRADir} \
-		-recoveryAreaSize 40960 \
-		-redoLogFileSize ${_oraRedoSizeMB}\"" >> ${_logFile} 2>&1
+		-recoveryAreaSize ${_oraFraSzGB} \
+		-redoLogFileSize ${_oraRedoSizeMB} \
+		-sampleSchema True\"" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: dbca -createDatabase ${_oraSid} on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: dbca -createDatabase ${_oraSid} on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to create the service account for PCS in the Oracle database...
+# Create a shell script named "orareboot.sh" in the "/root" directory on the VM.
+# This script will recreate the "oradata" subdirectory within the Resource Disk
+# with the correct ownership and permissions and will also remount "/u02" if it
+# isn't currently mounted...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: create database service account for Pacemaker/Corosync from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"
+echo "`date` - INFO: create \"/root/orareboot.sh\" on ${_vmName}" | tee -a ${_logFile}
+_scriptFile=/tmp/.${_azureOwner}_${_azureProject}_$$.tmp
+rm -f ${_scriptFile}
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"rm -f ${_scriptFile}\"" | tee -a ${_logFile}
+	exit 1
+fi
+echo "#!/bin/bash"							 > ${_scriptFile}
+echo "#"								>> ${_scriptFile}
+echo "_tempFilesDir=\"${_vmResourceDir}/oradata\""			>> ${_scriptFile}
+echo "_nfsMntPt=\"${_oraMntDir}\""					>> ${_scriptFile}
+echo "#"								>> ${_scriptFile}
+echo "if [ ! -d \${_tempFilesDir} ]"					>> ${_scriptFile}
+echo "then"								>> ${_scriptFile}
+echo "	mkdir \${_tempFilesDir}"					>> ${_scriptFile}
+echo "	chown ${_oraOsAcct}:${_oraOsGroup} \${_tempFilesDir}"		>> ${_scriptFile}
+echo "	chmod 775 \${_tempFilesDir}"					>> ${_scriptFile}
+echo "	ls -ld \${_tempFilesDir}"					>> ${_scriptFile}
+echo "	echo \"\${_tempFilesDir} created\""				>> ${_scriptFile}
+echo "else"								>> ${_scriptFile}
+echo "	echo \"\${_tempFilesDir} already exists\""			>> ${_scriptFile}
+echo "fi"								>> ${_scriptFile}
+echo "#"								>> ${_scriptFile}
+echo "if [[ \"\`mount | grep \\\" \${_nfsMntPt} \\\"\`\" = \"\" ]]"	>> ${_scriptFile}
+echo "then"								>> ${_scriptFile}
+echo "	mount \${_nfsMntPt}"						>> ${_scriptFile}
+echo "	df -h \${_nfsMntPt}"						>> ${_scriptFile}
+echo "	echo \"\${_nfsMntPt} mounted\""				 	>> ${_scriptFile}
+echo "else"								>> ${_scriptFile}
+echo "	echo \"\${_nfsMntPt} already mounted\""			 	>> ${_scriptFile}
+echo "fi"								>> ${_scriptFile}
+chmod 755 ${_scriptFile}
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"chmod 755 ${_scriptFile}\"" | tee -a ${_logFile}
+	exit 1
+fi
+scp ${_scriptFile} ${_azureOwner}@${_ipAddr}:/tmp/orareboot.sh >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"scp ${_scriptFile} ${_azureOwner}@${_ipAddr}:/tmp/orareboot.sh\"" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo mv /tmp/orareboot.sh /root" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo mv /tmp/orareboot.sh /root\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Run the newly-created "/root/orareboot.sh" script to create the "oradata"
+# subdirectory within the Resource Disk...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: run \"/root/orareboot.sh\" on ${_vmName}" | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo /root/orareboot.sh" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo /root/orareboot.sh\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create a "temporary use" temporary tablespace (named TEMPTMPTEMP), make it
+# default, then drop and recreate the TEMP tablespace on the VM temporary disk,
+# then make TEMP the default and clean up the "temporary use" TEMPTMPTEMP
+# tablespace...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: move TEMP tablespace to temporary disk on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"
 export ORACLE_SID=${_oraSid}
-sqlplus -S / as sysdba << __EOF__
+export ORACLE_HOME=${_oraHome}
+export PATH=${_oraHome}/bin:\${PATH}
+unset TNS_ADMIN
+sqlplus -S -L / as sysdba << __EOF__
 whenever oserror exit failure
 whenever sqlerror exit failure
-create user ${_oraClusterSvcAcct} identified by ${_oraSysPwd};
-grant create session to ${_oraClusterSvcAcct};
-grant alter session to ${_oraClusterSvcAcct};
-grant connect to ${_oraClusterSvcAcct};
+alter session set db_create_file_dest='${_vmResourceDir}/oradata';
+create temporary tablespace temptmptemp tempfile size 10M;
+alter database default temporary tablespace temptmptemp;
+shutdown immediate
+startup
+drop tablespace temp including contents and datafiles;
+alter session set db_create_file_dest='${_vmResourceDir}/oradata';
+create temporary tablespace temp
+	tempfile size 512M autoextend on next 512M maxsize unlimited
+	extent management local uniform size 1M;
+alter database default temporary tablespace temp;
 exit success
 __EOF__\"" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: create database service account for Pacemaker/Corosync on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: move TEMP tablespace to temporary disk on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"
+export ORACLE_SID=${_oraSid}
+export ORACLE_HOME=${_oraHome}
+export PATH=${_oraHome}/bin:\${PATH}
+unset TNS_ADMIN
+sqlplus -S -L / as sysdba << __EOF__
+whenever oserror exit failure
+whenever sqlerror exit failure
+drop tablespace temptmptemp including contents and datafiles;
+exit success
+__EOF__\"" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: drop TEMPTMPTEMP tablespace disk on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to shutdown the Oracle database instance...
+# Configure Oracle Flash Cache on the ephemeral "temporary disk" along with the
+# temporary tablespace...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: shutdown immediate ${_oraSid} from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"
+echo "`date` - INFO: configure FLASH CACHE to temporary disk on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"
 export ORACLE_SID=${_oraSid}
-sqlplus -S / as sysdba << __EOF__
+export ORACLE_HOME=${_oraHome}
+export PATH=${_oraHome}/bin:\${PATH}
+unset TNS_ADMIN
+sqlplus -S -L / as sysdba << __EOF__
+whenever oserror exit failure
+whenever sqlerror exit failure
+variable fcsize varchar2(32)
+begin
+	select to_char((to_number(value)/1024)*4)||'K' into :fcsize from v\\\\\\\$parameter where name = 'sga_max_size';
+end;
+/
+begin
+	execute immediate 'alter system set db_flash_cache_file = ''${_vmResourceDir}/oradata/flash_cache.dat'' scope=spfile';
+end;
+/
+begin
+	execute immediate 'alter system set db_flash_cache_size = '||:fcsize||' scope=spfile';
+end;
+/
+shutdown immediate
+startup
+exit success
+__EOF__\"" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: configure FLASH CACHE to temporary disk on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create Linux SYSTEMD configuration file "orareboot.service" in "/etc/systemd/system"...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: create \"/etc/systemd/system/orareboot.service\" on ${_vmName}" | tee -a ${_logFile}
+_scriptFile=/tmp/.${_azureOwner}_${_azureProject}_$$.tmp
+rm -f ${_scriptFile}
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"rm -f ${_scriptFile}\"" | tee -a ${_logFile}
+	exit 1
+fi
+echo "[Unit]"									 > ${_scriptFile}
+echo "Description=Run script at startup after network becomes reachable"	>> ${_scriptFile}
+echo ""										>> ${_scriptFile}
+echo "[Service]"								>> ${_scriptFile}
+echo "Type=simple"								>> ${_scriptFile}
+echo "RemainAfterExit=yes"							>> ${_scriptFile}
+echo "ExecStart=/root/orareboot.sh"						>> ${_scriptFile}
+echo "TimeoutStartSec=0"							>> ${_scriptFile}
+echo ""										>> ${_scriptFile}
+echo "[Install]"								>> ${_scriptFile}
+echo "WantedBy=default.target"							>> ${_scriptFile}
+chmod 755 ${_scriptFile} 
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"chmod 755 ${_scriptFile}\"" | tee -a ${_logFile}
+	exit 1
+fi
+scp ${_scriptFile} ${_azureOwner}@${_ipAddr}:/tmp/orareboot.service >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"scp ${_scriptFile} ${_azureOwner}@${_ipAddr}:/tmp/orareboot.service\"" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo mv /tmp/orareboot.service /etc/systemd/system" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo mv /tmp/orareboot.service /etc/systemd/system\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Force a reload of the SYSTEMD daemon on the VM...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: \"sudo systemctl daemon-reload\" on ${_vmName}" | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo systemctl daemon-reload" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo systemctl daemon-reload\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Enable the new "orareboot" service on the VM...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: \"sudo systemctl enable orareboot.service\" on ${_vmName}" | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo systemctl enable orareboot.service" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo systemctl enable orareboot.service\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Ensure that the Azure Linux agent is enabled...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: \"sudo systemctl enable waagent\" on ${_vmName}" | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo systemctl enable waagent" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo systemctl enable waagent\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Ensure that the Azure Linux agent is running...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: \"sudo systemctl start waagent\" on ${_vmName}" | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo systemctl start waagent" >> ${_logFile} 2>&1
+if (( $? != 0 ))
+then
+	echo "`date` - FAIL: \"sudo systemctl start waagent\" on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Enable Azure VM Backup protection using the policy and vault just created...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az backup protection enable-for-vm ${_vmName}..." | tee -a ${_logFile}
+az backup protection enable-for-vm \
+	--policy-name ${_policyName} \
+	--vault-name ${_vaultName} \
+	--vm ${_vmName} \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az backup protection enable-for-vm ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# If necessary, create an OS group named "backupdba" on the VM...
+#--------------------------------------------------------------------------------
+if [[ "`ssh ${_azureOwner}@${_ipAddr} \"grep '^backupdba:' /etc/group\"`" = "" ]]
+then
+	echo "`date` - INFO: groupadd backupdba on ${_vmName}..." | tee -a ${_logFile}
+	ssh ${_azureOwner}@${_ipAddr} "sudo groupadd backupdba" >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: sudo groupadd backupdba on ${_vmName}" | tee -a ${_logFile}
+		exit 1
+	fi
+fi
+#
+#--------------------------------------------------------------------------------
+# Create an OS account named "azbackup" belonging to the OS group named
+# "backupdba" on the VM...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: useradd -g backupdba azbackup on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo useradd -g backupdba azbackup" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo useradd -g backupdba azbackup on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create an OS-authenticated database account named OPS$AZBACKUP within the
+# database, and grant EXECUTE on DBMS_SYSTEM to the SYSBACKUP database role...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: setup Azure VM Backup within Oracle database on ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"
+export ORACLE_SID=${_oraSid}
+export ORACLE_HOME=${_oraHome}
+export PATH=${_oraHome}/bin:\${PATH}
+unset TNS_ADMIN
+cd ${_oraHome}/dbs
+mv orapw${_oraSid} orapw${_oraSid}.save
+orapwd input_file=orapw${_oraSid}.save file=orapw${_oraSid} format=12.2
+sqlplus -S -L / as sysdba << __EOF__
+whenever oserror exit failure
+whenever sqlerror exit failure
+CREATE USER \\\"OPS\\\\\\\$AZBACKUP\\\" IDENTIFIED EXTERNALLY;
+GRANT CREATE SESSION, ALTER SESSION, SYSBACKUP TO \\\"OPS\\\\\\\$AZBACKUP\\\";
+GRANT EXECUTE ON DBMS_SYSTEM TO SYSBACKUP;
+exit success
+__EOF__\"" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: setup Azure VM Backup within Oracle database on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Create a local copy of the "workload.conf" file to be copied into the
+# "/etc/azure" subdirectory on the VM, with contents appropriate for configuring
+# the backing up of an Oracle database...
+#--------------------------------------------------------------------------------
+rm -f ${_workloadConfFile}
+echo "[workload]"				 > ${_workloadConfFile}
+echo "workload_name = oracle"			>> ${_workloadConfFile}
+echo "configuration_path = /etc/oratab"		>> ${_workloadConfFile}
+echo "timeout = 90"				>> ${_workloadConfFile}
+echo "linux_user = azbackup"			>> ${_workloadConfFile}
+#
+#--------------------------------------------------------------------------------
+# Now that the "/etc/azure/workload.conf" file has been initialized on the VM,
+# replace it with contents appropriate for backing up Oracle databases...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: copy new workload.conf file to ${_vmName}..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo mkdir /etc/azure" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo mkdir /etc/azure on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+scp ${_workloadConfFile} ${_azureOwner}@${_ipAddr}:/tmp/workload.conf >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: scp ${_workloadConfFile} ${_azureOwner}@${_ipAddr}:/tmp/workload.conf on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo mv /tmp/workload.conf /etc/azure/workload.conf" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo mv /tmp/workload.conf /etc/azure/workload.conf on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+ssh ${_azureOwner}@${_ipAddr} "sudo chown root:root /etc/azure/workload.conf" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo chown root:root /etc/azure/workload.conf on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Pause for 60 more seconds before attempting to initiate the initial Azure VM Backup...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: pausing for 60 seconds before initiating first backup on ${_vmName}..." | tee -a ${_logFile}
+sleep 60
+#
+#--------------------------------------------------------------------------------
+# Start an Azure VM Backup running now...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: az backup protection backup-now ${_vmName}..." | tee -a ${_logFile}
+az backup protection backup-now \
+	--item-name ${_vmName} \
+	--backup-management-type AzureIaasVM \
+	--workload-type VM \
+	--container-name ${_vmName} \
+	--vault-name ${_vaultName} \
+	--verbose >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: az backup protection backup-now ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Edit the "/etc/default/grub" configuration file has the correct list of LVM2
+# volume groups and logical volumes in "rd.lvm.lv" entries...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: reset LVM2 info in /etc/default/grub configuration file..." | tee -a ${_logFile}
+_tmpGrubFile=/tmp/.${_progName}_grub_$$.tmp
+rm -f ${_tmpGrubFile}
+scp ${_azureOwner}@${_ipAddr}:/etc/default/grub ${_tmpGrubFile} >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: scp /etc/default/grub from ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+if [[ "`grep '^GRUB_CMDLINE_LINUX=' ${_tmpGrubFile}`" = "" ]]
+then	# ...create a new blank GRUB_CMDLINE_LINUX string...
+	#
+	_grubCmdlineLinux="GRUB_CMDLINE_LINUX=\"\""
+	_addGrubCmdlineLinux=true
+	_spc=""
+	#
+else	# ...strip the existing "rd.lvm.lv" entries from GRUB_CMDLINE_LINUX string...
+	#
+	_grubCmdlineLinux=`echo ${_str} | \
+				sed 's~"rd.lvm.lv=[a-z0-9]*/[a-z0-9]* ~"~g' | \
+				sed 's~ rd.lvm.lv=[a-z0-9]*/[a-z0-9]*"~"~g' | \
+				sed 's~rd.lvm.lv=[a-z0-9]*/[a-z0-9]* ~~g'`
+	_addGrubCmdlineLinux=false
+	_spc=" "
+	#
+fi
+_tmpLvsFile=/tmp/.${_progName}_lvs_$$.tmp
+_tmpErrFile=/tmp/.${_progName}_err_$$.tmp
+rm -f ${_tmpLvsFile} ${_tmpErrFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo lvs -o vg_name,lv_name" 2> ${_tmpErrFile} | sed '1d' > ${_tmpLvsFile}
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo lvs -o vg_name,lv_name on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+while read _vg _lv
+do
+	_grubCmdlineLinux=`echo ${_grubCmdlineLinux} | sed "s~\"\$~${_spc}rd.lvm.lv=${_vg}/${_lv}\"~"`
+	_spc=" "
+done < ${_tmpLvsFile}
+rm -f ${_tmpLvsFile}
+if [[ "`cat ${_tmpErrFile}`" != "" ]]
+then
+	echo "`date` - FAIL: sudo lvs -o vg_name,lv_name on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+rm -f ${_tmpErrFile}
+if [[ "${_addGrubCmdlineLinux}" = "true" ]]; then
+	echo "${_grubCmdlineLinux}" >> ${_tmpGrubFile}
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: echo GRUB_CMDLINE_LINUX >> ${_tmpGrubFile}" | tee -a ${_logFile}
+		exit 1
+	fi
+else
+	sed -i "s~^GRUB_CMDLINE_LINUX=\"[^\"]*\"\$~${_grubCmdlineLinux}~" ${_tmpGrubFile} >> ${_logFile} 2>&1
+	if (( $? != 0 )); then
+		echo "`date` - FAIL: sed -i GRUB_CMDLINE_LINUX ${_tmpGrubFile}" | tee -a ${_logFile}
+		exit 1
+	fi
+fi
+scp ${_tmpGrubFile} ${_azureOwner}@${_ipAddr}:/tmp/grub.tmp >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: scp ${_tmpGrubFile} to /tmp/grub.tmp on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+rm -f ${_tmpGrubFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo cp /tmp/grub.tmp /etc/default/grub" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo cp /tmp/grub.tmp /etc/default/grub on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Regenerate the initramfs file in the boot directory...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: using dracut to regenerate initramfs..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo dracut -f /boot/initramfs-\$(uname -r).img \$(uname -r)" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo dracut -f /boot/initramfs-\$(uname -r).img \$(uname -r) on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Recreate the GRUB2 configuration file...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: recreate grub2 configuration file..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo grub2-mkconfig -o /etc/grub2.cfg" >> ${_logFile} 2>&1
+if (( $? != 0 )); then
+	echo "`date` - FAIL: sudo grub2-mkconfig -o /etc/grub2.cfg on ${_vmName}" | tee -a ${_logFile}
+	exit 1
+fi
+#
+#--------------------------------------------------------------------------------
+# Shutdown the Oracle database and the Oracle TNS listener gracefully...
+#--------------------------------------------------------------------------------
+echo "`date` - INFO: stop Oracle listener and database..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"\
+export ORACLE_SID=${_oraSid}
+export ORACLE_HOME=${_oraHome}
+export PATH=${_oraHome}/bin:\${PATH}
+unset TNS_ADMIN
+lsnrctl stop LISTENER
+sqlplus -S -L / as sysdba << __EOF__
 whenever oserror exit failure
 whenever sqlerror exit failure
 shutdown immediate
 exit success
 __EOF__\"" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: shutdown immediate ${_oraSid} on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: stop Oracle listener and database on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to stop the Oracle listener service...
+# Reboot the virtual machine...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: lsnrctl stop ${_oraLsnr} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"lsnrctl stop ${_oraLsnr}\"" >> ${_logFile} 2>&1
+echo "`date` - INFO: reboot..." | tee -a ${_logFile}
+az vm restart --name ${_vmName} --verbose >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: lsnrctl stop ${_oraLsnr} on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: az vm restart --name ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to move the Oracle database instance's password file
-# (i.e. "orapw${ORACLE_SID}") and the parameter initialization file (i.e.
-# "spfile${ORACLE_SID}.ora") to a subdirectory on the shared disk, then create
-# symbolic (soft) links for each file so that it appears that both files are
-# in their original locations...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: move/symlink PWDFILE and SPFILE to ${_oraConfDir} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"mv ${_oraHome}/dbs/orapw${_oraSid} ${_oraHome}/dbs/spfile${_oraSid}.ora ${_oraConfDir}\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"mv ${_oraHome}/dbs/orapw${_oraSid} ${_oraHome}/dbs/spfile${_oraSid}.ora ${_oraConfDir}\" on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"ln -s ${_oraConfDir}/orapw${_oraSid} ${_oraHome}/dbs\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"ln -s ${_oraConfDir}/orapw${_oraSid} ${_oraHome}/dbs\" on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"ln -s ${_oraConfDir}/spfile${_oraSid}.ora ${_oraHome}/dbs\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"ln -s ${_oraConfDir}/spfile${_oraSid}.ora ${_oraHome}/dbs\" on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to create symbolic (soft) links for the password file
-# and the server parameter (spfile).  Even though the shared disk is not yet
-# mounted, the symbolic links will be ready when it is...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: symlink PWDFILE and SPFILE to ${_oraConfDir} on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo su - ${_oraOsAcct} -c \"ln -s ${_oraConfDir}/orapw${_oraSid} ${_oraHome}/dbs\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"ln -s ${_oraConfDir}/orapw${_oraSid} ${_oraHome}/dbs\" on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo su - ${_oraOsAcct} -c \"ln -s ${_oraConfDir}/spfile${_oraSid}.ora ${_oraHome}/dbs\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"ln -s ${_oraConfDir}/spfile${_oraSid}.ora ${_oraHome}/dbs\" on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# Perform the same three steps for each of the three Oracle TNS configuration
-# files which are (by default) located in the "$ORACLE_HOME/network/admin"
-# sub-directory on local (non-shared) disk...
-#--------------------------------------------------------------------------------
-for _fName in sqlnet.ora tnsnames.ora listener.ora
-do
-	#
-	#------------------------------------------------------------------------
-	# SSH into the first VM to edit the Oracle TNS configuration file to
-	# change the fully-qualified domain name of the first VM to the IP address
-	# of the PCS cluster virtual IP...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: edit ${_oraTnsDir}/${_fName} on ${_vmName1}..." | tee -a ${_logFile}
-	ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"sed -i s/${_vmFQDN1}/${_pcsVipAddr}/ ${_oraTnsDir}/${_fName}\"" >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: \"sed -i s/${_vmFQDN1}/${_pcsVipAddr}/ ${_oraTnsDir}/${_fName}\" on ${_vmName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# SSH into the first VM to move the Oracle TNS configuration file to a
-	# subdirectory on the shared disk, so that it will be accessible from
-	# whichever node is active.  Then create a symbolic (soft) link so that
-	# it appears to the database instance and other applications that the
-	# file is still in its original location...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: move/link \"${_fName}\" to ${_oraConfDir} on ${_vmName1}..." | tee -a ${_logFile}
-	ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"mv ${_oraTnsDir}/${_fName} ${_oraConfDir}\"" >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: \"mv ${_oraTnsDir}/${_fName} ${_oraConfDir}\" on ${_vmName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	ssh ${_azureOwner}@${_ipAddr1} "sudo su - ${_oraOsAcct} -c \"ln -s ${_oraConfDir}/${_fName} ${_oraTnsDir}\"" >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: \"ln -s ${_oraConfDir}/${_fName} ${_oraTnsDir}\" on ${_vmName1}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-	#------------------------------------------------------------------------
-	# SSH into the second VM to create a symbolic (soft) link for the Oracle
-	# TNS configuration file, so that when the shared disk is attached to
-	# this host/node, the symlink will point at the file in the shared
-	# location...
-	#
-	# Please note: the shared disk need not be mounted for a symlink to be
-	# created...
-	#------------------------------------------------------------------------
-	echo "`date` - INFO: symlink \"${_fName}\" to ${_oraConfDir} on ${_vmName2}..." | tee -a ${_logFile}
-	ssh ${_azureOwner}@${_ipAddr2} "sudo su - ${_oraOsAcct} -c \"ln -s ${_oraConfDir}/${_fName} ${_oraTnsDir}\"" >> ${_logFile} 2>&1
-	if (( $? != 0 )); then
-		echo "`date` - FAIL: \"ln -s ${_oraConfDir}/${_fName} ${_oraTnsDir}\" on ${_vmName2}" | tee -a ${_logFile}
-		exit 1
-	fi
-	#
-done
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to create an entry for the Oracle database in the
-# "/etc/oratab" ccnfiguration file...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: create entry in /etc/oratab on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo su - ${_oraOsAcct} -c \"echo ${_oraSid}:${_oraHome}:N >> /etc/oratab\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"echo ${_oraSid}:${_oraHome}:N >> /etc/oratab\" on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to create the subdirectories needed "audit" and DataPump
-# files for the Oracle database instance, the former based on the default value
-# of the AUDIT_FILE_DEST parameter value...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: create adump and dpdump subdirectories on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo su - ${_oraOsAcct} -c \"mkdir -p ${_oraBase}/admin/${_oraSid}/adump\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"mkdir -p ${_oraBase}/admin/${_oraSid}/adump\" on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo su - ${_oraOsAcct} -c \"mkdir -p ${_oraBase}/admin/${_oraSid}/dpdump\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: \"mkdir -p ${_oraBase}/admin/${_oraSid}/dpdump\" on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to unmount the filesystem on the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: umount ${_oraMntDir} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo umount ${_oraMntDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo umount ${_oraMntDir} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to install the PCS module to create and manage the
-# cluster...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: yum install -y pcs resource-agents fence-agents-all on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo yum install -y pcs resource-agents fence-agents-all" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum install -y pcs resource-agents fence-agents-all on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to start the "pcsd" service...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: systemctl start pcsd.service on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl start pcsd.service" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl start pcsd.service on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to enable the "pcsd" service for automatic start after
-# reboot...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: systemctl enable pcsd.service on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl enable pcsd.service" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl enable pcsd.service on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to set a password for the HA cluster OS account...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: set ${_pcsClusterUser} password on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "echo ${_oraSysPwd} | sudo passwd --stdin ${_pcsClusterUser}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo passwd ${_pcsClusterUser} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to disable firewall services...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: systemctl stop/disable firewalld on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl stop firewalld" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl stop firewalld on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl disable firewalld" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl disable firewalld on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to open up firewall ports for HA services, Oracle TNS
-# port 1521, and the PCS azure-lb port 62503...
-#--------------------------------------------------------------------------------
-#echo "`date` - INFO: systemctl start/enable firewalld on ${_vmName1}..." | tee -a ${_logFile}
-#ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl start firewalld" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo systemctl start firewalld on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl enable firewalld" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo systemctl enable firewalld on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#echo "`date` - INFO: firewall-cmd --add-service=high-availability from ${_vmName1}..." | tee -a ${_logFile}
-#ssh ${_azureOwner}@${_ipAddr1} "sudo firewall-cmd --add-service=high-availability --permanent" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-service=high-availability --permanent on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr1} "sudo firewall-cmd --add-service=high-availability" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-service=high-availability on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr1} "sudo firewall-cmd --add-port=1521/tcp" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-port=1521/tcp on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr1} "sudo firewall-cmd --add-port=62503/tcp" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-port=62503/tcp on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to install the PCS module to create and manage the
-# cluster...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: yum install -y pcs resource-agents fence-agents-all on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo yum install -y pcs resource-agents fence-agents-all" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo yum install -y pcs resource-agents fence-agents-all on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to start the "pcsd" service...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: systemctl start pcsd.service on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo systemctl start pcsd.service" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl start pcsd.service on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to enable the "pcsd" service for automatic restart after
-# reboot...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: systemctl enable pcsd.service on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo systemctl enable pcsd.service" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl enable pcsd.service on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to set a password for the HA cluster OS account...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: set ${_pcsClusterUser} password on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "echo ${_oraSysPwd} | sudo passwd --stdin ${_pcsClusterUser}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo passwd ${_pcsClusterUser} on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to open up firewall ports for HA services, Oracle TNS
-# port 1521, and the PCS azure-lb port 62503...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: systemctl stop/disable firewalld on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo systemctl stop firewalld" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl stop firewalld on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo systemctl disable firewalld" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo systemctl disable firewalld on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to set up firewall ports for HA services...
-#--------------------------------------------------------------------------------
-#echo "`date` - INFO: systemctl start/enable firewalld on ${_vmName1}..." | tee -a ${_logFile}
-#ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl start firewalld" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo systemctl start firewalld on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr1} "sudo systemctl enable firewalld" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo systemctl enable firewalld on ${_vmName1}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#echo "`date` - INFO: firewall-cmd --add-service=high-availability from ${_vmName2}..." | tee -a ${_logFile}
-#ssh ${_azureOwner}@${_ipAddr2} "sudo firewall-cmd --add-service=high-availability --permanent" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-service=high-availability --permanent on ${_vmName2}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr2} "sudo firewall-cmd --add-service=high-availability" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-service=high-availability on ${_vmName2}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr2} "sudo firewall-cmd --add-port=1521/tcp" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-port=1521/tcp on ${_vmName2}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#ssh ${_azureOwner}@${_ipAddr2} "sudo firewall-cmd --add-port=62503/tcp" >> ${_logFile} 2>&1
-#if (( $? != 0 )); then
-#	echo "`date` - FAIL: sudo firewall-cmd --add-port=62503/tcp on ${_vmName2}" | tee -a ${_logFile}
-#	exit 1
-#fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to set up authentication on the nodes of the PCS cluster
-# using the PCS cluster OS account...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs cluster auth from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs cluster auth ${_vmFQDN1} ${_vmFQDN2} -u ${_pcsClusterUser} -p ${_oraSysPwd}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs cluster auth ${_vmFQDN1} ${_vmFQDN2} -u ${_pcsClusterUser} -p XXX on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to setup the new PCS cluster...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs cluster setup --wait_for_all=0 --name ${_pcsClusterName} from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs cluster setup --wait_for_all=0 --name ${_pcsClusterName} ${_vmFQDN1} ${_vmFQDN2}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs cluster setup --wait_for_all=0 --name ${_pcsClusterName} ${_vmFQDN1} ${_vmFQDN2} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to start all the nodes in the PCS cluster.  The "--all"
-# qualifier does this for all nodes in the cluster...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs cluster start --all from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs cluster start --all" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs cluster start --all on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to ignore the default policy requiring a quorum...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs property set no-quorum-policy=ignore from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs property set no-quorum-policy=ignore" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs property set no-quorum-policy=ignore on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to enable STONITH fencing in the cluster...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs property set stonith-enabled=true from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs property set stonith-enabled=true" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs property set stonith-enabled=true on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to set the failover (migration) threshold to one node...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource defaults migration-threshold=1 from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource defaults migration-threshold=1" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource defaults migration-threshold=1 on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to set the default "stickiness" of resources to indicate
-# that healthy resources should not be moved. We do not want PCS moving resources
-# unless there is a failure or a command to do so...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource defaults resource-stickiness=100 from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource defaults resource-stickiness=100" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource defaults resource-stickiness=100 on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to enable the PCS cluster for automatic restart when the
-# node restarts.  The "--all" qualifier does this for all nodes in the cluster...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs cluster enable --all from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs cluster enable --all" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs cluster enable --all on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to disable the "lvmetad" subsystem, which might contend
-# with Pacemaker for control of LVM resources.  Finish by editing the
-# "/etc/lvm/lvm.conf" configuration file and rebooting the host...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: disabling lvmetad then rebooting ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo lvmconf --enable-halvm --services --startstopservices" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo lvmconf --enable-halvm --services --startstopservices on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-if [[ "`ssh ${_azureOwner}@${_ipAddr1} 'ps -eaf | grep lvmetad | grep -v grep'`" != "" ]]; then
-	echo "`date` - FAIL: lvmetad is still running on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo sed -i 's/# volume_list = \[/volume_list = [] ###[/' /etc/lvm/lvm.conf" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed -i 's/# volume_list = [/volume_list = [] ###[/' /etc/lvm/lvm.conf on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr1} "sudo dracut -H -f /boot/initramfs-\$(uname -r).img \$(uname -r)" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo dracut -H -f /boot/initramfs-\$(uname -r).img \$(uname -r) on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-az vm restart --name ${_vmName1} --verbose >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: az vm restart --name ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the second VM to disable the "lvmetad" subsystem, which might contend
-# with Pacemaker for control of LVM resources.  Finish by editing the
-# "/etc/lvm/lvm.conf" configuration file and rebooting the host...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: disabling lvmetad then rebooting ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo lvmconf --enable-halvm --services --startstopservices" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo lvmconf --enable-halvm --services --startstopservices on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-if [[ "`ssh ${_azureOwner}@${_ipAddr2} 'ps -eaf | grep lvmetad | grep -v grep'`" != "" ]]; then
-	echo "`date` - FAIL: lvmetad is still running on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo sed -i 's/# volume_list = \[/volume_list = [] ###[/' /etc/lvm/lvm.conf" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo sed -i 's/# volume_list = [/volume_list = [] ###[/' /etc/lvm/lvm.conf on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-ssh ${_azureOwner}@${_ipAddr2} "sudo dracut -H -f /boot/initramfs-\$(uname -r).img \$(uname -r)" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo dracut -H -f /boot/initramfs-\$(uname -r).img \$(uname -r) on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-az vm restart --name ${_vmName2} --verbose >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: az vm restart --name ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# Find the underlying block ID for the SCSI device...
-#--------------------------------------------------------------------------------
-_devById=`ssh ${_azureOwner}@${_ipAddr1} "ls -l /dev/disk/by-id" | grep "/${_scsiDevName}$" | grep "wwn-" | awk '{print $9}'`
-if [[ "${_devById}" = "" ]]
-then
-	echo "`date` - FAIL: \"/dev/disk/by-id\" entry for \"${_scsiDevName}\" not found on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-_devByIdPath="/dev/disk/by-id/${_devById}"
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a storage-based STONITH device on the shared
-# SCSI device...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs stonith create ${_pcsFenceName} devices=${_devByIdPath} from ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs stonith create \
-	${_pcsFenceName} fence_scsi \
-	devices=${_devByIdPath} \
-	pcmk_host_list=\"${_vmFQDN1} ${_vmFQDN2}\" \
-	pcmk_monitor_action=metadata \
-	pcmk_reboot_action=off \
-	meta provides=unfencing \
-	--group=${_pcsClusterGroup}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs stonith create ${_pcsFenceName} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a cluster resource for the virtual IP address...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource create ${_pcsClusterVIP} ocf:heartbeat:IPaddr2 ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource create \
-	${_pcsClusterVIP} \
-	ocf:heartbeat:IPaddr2 \
-	--group=${_pcsClusterGroup} \
-	ip=${_pcsVipAddr} \
-	cidr_netmask=${_pcsVipMask} \
-	nic=eth0 \
-	op monitor interval=10s" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource create ${_pcsClusterVIP} IPaddr2 at ${_pcsVipAddr} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a cluster resource for the Azure load balancer...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource create ${_pcsClusterLB} ocf:heartbeat:azure-lb ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource create \
-	${_pcsClusterLB} \
-	ocf:heartbeat:azure-lb \
-	--group=${_pcsClusterGroup} \
-	port=${_lbProbePort}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource create ${_pcsClusterLB} azure-lb at ${_lbProbePort} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a cluster resource for the volume group
-# consisting of the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource create ${_pcsClusterLVM} ocf:heartbeat:LVM volgrpname=${_vgName} on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource create \
-	${_pcsClusterLVM} \
-	ocf:heartbeat:LVM \
-	--group=${_pcsClusterGroup} \
-	volgrpname=${_vgName} \
-	exclusive=true" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource create ${_pcsClusterLVM} LVM on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a cluster resource for the EXT4 filesystem on
-# the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource create ${_pcsClusterFS} ocf:heartbeat:Filesystem on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource create \
-	${_pcsClusterFS} \
-	ocf:heartbeat:Filesystem \
-	--group=${_pcsClusterGroup} \
-	device=\"/dev/${_vgName}/${_lvName}\" \
-	directory=\"${_oraMntDir}\" \
-	fstype=\"${_fsType}\"" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource create ${_pcsClusterFS} Filesystem on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a cluster resource for the Oracle TNS Listener...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource create ${_pcsClusterLsnr} oralsnr sid=${_oraSid} --group=${_pcsClusterGroup}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource create \
-	${_pcsClusterLsnr} \
-	ocf:heartbeat:oralsnr \
-	--group=${_pcsClusterGroup} \
-	sid=${_oraSid} \
-	user=${_oraOsAcct} \
-	home=${_oraHome} \
-	listener=${_oraLsnr} \
-	tns_admin=${_oraTnsDir}" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource create ${_pcsClusterLsnr} ocf:heartbeat:oralsnr --group=${_pcsClusterGroup} sid=${_oraSid} home=${_oraHome} listener=${_oraLsnr} tns_admin=${_oraTnsDir}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# SSH into the first VM to create a cluster resource for the Oracle database
-# instance on the shared disk...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: pcs resource create ${_pcsClusterDB} oracle sid=${_oraSid} --group=${_pcsClusterGroup}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo pcs resource create \
-	${_pcsClusterDB} \
-	ocf:heartbeat:oracle \
-	--group=${_pcsClusterGroup} \
-	sid=${_oraSid} \
-	home=${_oraHome} \
-	user=${_oraOsAcct} \
-	monuser=${_oraClusterSvcAcct} \
-	monpassword=${_oraSysPwd} \
-	monprofile=default \
-	ipcrm=instance \
-	shutdown_method=checkpoint/abort" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: sudo pcs resource create ${_pcsClusterDB} ocf:heartbeat:oracle sid=${_oraSid} --group=${_pcsClusterGroup} on ${_vmName1}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# Pause for 30 seconds before running verbose "live check" on both nodes...
+# Pause for 30 seconds...
 #--------------------------------------------------------------------------------
 echo "`date` - INFO: pause for 30 seconds..." | tee -a ${_logFile}
 sleep 30
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to perform a verbose "live check" of the validity of the
-# configuration of the PCS cluster...
+# After the reboot, restart the Oracle listener and database...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: crm_verify --live-check --verbose on ${_vmName1}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr1} "sudo crm_verify --live-check --verbose" >> ${_logFile} 2>&1
+echo "`date` - INFO: restart Oracle listener and database..." | tee -a ${_logFile}
+ssh ${_azureOwner}@${_ipAddr} "sudo su - ${_oraOsAcct} -c \"\
+export ORACLE_SID=${_oraSid}
+export ORACLE_HOME=${_oraHome}
+export PATH=${_oraHome}/bin:\${PATH}
+unset TNS_ADMIN
+lsnrctl start LISTENER
+sqlplus -S -L / as sysdba << __EOF__
+whenever oserror exit failure
+whenever sqlerror exit failure
+startup
+exit success
+__EOF__\"" >> ${_logFile} 2>&1
 if (( $? != 0 )); then
-	echo "`date` - FAIL: crm_verify --live-check --verbose on ${_vmName1}" | tee -a ${_logFile}
+	echo "`date` - FAIL: restart Oracle listener and database on ${_vmName}" | tee -a ${_logFile}
 	exit 1
 fi
 #
 #--------------------------------------------------------------------------------
-# SSH into the first VM to perform a verbose "live check" of the validity of the
-# configuration of the PCS cluster...
+# Completed the setup successfully!  End of program...
 #--------------------------------------------------------------------------------
-echo "`date` - INFO: crm_verify --live-check --verbose on ${_vmName2}..." | tee -a ${_logFile}
-ssh ${_azureOwner}@${_ipAddr2} "sudo crm_verify --live-check --verbose" >> ${_logFile} 2>&1
-if (( $? != 0 )); then
-	echo "`date` - FAIL: crm_verify --live-check --verbose on ${_vmName2}" | tee -a ${_logFile}
-	exit 1
-fi
-#
-#--------------------------------------------------------------------------------
-# Successful completion and exit with success status...
-#--------------------------------------------------------------------------------
-echo "`date` - INFO: successful completion" | tee -a ${_logFile}
+echo "`date` - INFO: completed successfully!" | tee -a ${_logFile}
 exit 0
