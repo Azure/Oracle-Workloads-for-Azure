@@ -11,5 +11,7 @@ OPTIONS:
    
    -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'.
    
+   -Debug            : Generates debug output.
+   
 SAMPLE:   
-   oma-tool.ps1 -SourceFolder "C:\Reports" -TemplateFileName "C:\Templates\AWR Analysis template spreadsheet.xlsx"
+   oma-tool.ps1 -SourceFolder "C:\Reports" -AzureRegion westus
