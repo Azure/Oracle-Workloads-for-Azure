@@ -151,7 +151,7 @@ function ProcessAWRReport {
             throw "HTML table cannot be found summary=`"Database Summary`" while processing file `"$awrReportFileName`""
         }
 
-        $awrData=$html.body.getElementsByTagName('table') | Where {$_.summary -like 'Database Instances Included In Report*'} | ForEach-Object {$_.rows} | where {$_.cells[0].tagName -ne "TH"} |
+        [array]$awrData=$html.body.getElementsByTagName('table') | Where {$_.summary -like 'Database Instances Included In Report*'} | ForEach-Object {$_.rows} | where {$_.cells[0].tagName -ne "TH"} |
         ForEach-Object {
             $objectProps=[ordered]@{
                 InstanceIndex=ConverNumberOrDefault $_.cells[0].InnerText 0 
@@ -340,9 +340,10 @@ Amount of memory in GB estimated on Azure.
 .EXAMPLE
 
 #>
-function GenerateRecommendations([int]$estimatedvCPU, [int]$estimatedRAM, [int]$estimatedIOPS, [int]$estimatedIOThroughput){
+function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM, [decimal]$estimatedIOPS, [decimal]$estimatedIOThroughput){
     Write-Host "Generating recommendations ..."
     Write-Debug "Fetching available Azure VM SKUs in $AzureRegion ..."
+    try{
     $json=az vm list-skus --all --location $AzureRegion | ConvertFrom-Json
     $azureSkus = $json | ForEach-Object {
         $objectProps=[ordered]@{
@@ -359,37 +360,108 @@ function GenerateRecommendations([int]$estimatedvCPU, [int]$estimatedRAM, [int]$
         return $obj
     } 
     
-    $azureVMSkus   = $azureSkus | where {$_.resourceType -eq "virtualMachines"}
+    $azureVMSkus   = $azureSkus | where {$_.resourceType -eq "virtualMachines"} | Select-Object *, 
+                @{N='tmp_vCPUs';E={if([string]::IsNullOrEmpty($_.vCPUsAvailable)){[decimal]::Parse($_.vCPUs)}else{[decimal]::Parse($_.vCPUsAvailable)}}}, 
+                @{N='tmp_MemoryGB';E={[decimal]::Parse($_.MemoryGB)}}, 
+                @{N='tmp_vCPUsPerCore';E={if([string]::IsNullOrEmpty($_.vCPUsPerCore)){2}else{[decimal]::Parse($_.vCPUsPerCore)}}} 
+
+    [array]$global:azureVMRecommendations = $null
 
     Write-Debug "Filtering lower VM SKUs by vCPU."
-    $global:azureVMRecommendations  = $azureVMSkus | where { ([decimal]::Parse($_.vCPUs) -ge $estimatedvCPU*0.7) -and ([decimal]::Parse($_.vCPUs) -le $estimatedvCPU) -and ([decimal]::Parse($_.MemoryGB) -ge $estimatedRAM*0.7) }
+    try{
+        [array]$tmpresult = $azureVMSkus | where { ($_.tmp_vCPUs -ge $estimatedvCPU*0.7) -and ($_.tmp_vCPUs -le $estimatedvCPU) -and ($_.MemoryGB -ge $estimatedRAM*0.7) }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     Write-Debug "Filtering higher VM SKUs by vCPU."
-    $bottomvCPUs=$azureVMSkus | select @{N='vCPUs'   ; E={[decimal]::Parse($_.vCPUs)   }} -Unique | where { ($_.vCPUs    -ge $estimatedvCPU)} | Sort-Object -Property vCPUs     | Select -ExpandProperty vCPUs    -First 1
-    $global:azureVMRecommendations += $azureVMSkus | where { ([decimal]::Parse($_.vCPUs)    -in $bottomvCPUs) }
+    try{
+        [array]$bottomvCPUs=$azureVMSkus | select -Property tmp_vCPUs -Unique | where { ($_.tmp_vCPUs    -ge $estimatedvCPU)} | Sort-Object -Property tmp_vCPUs  | Select -ExpandProperty tmp_vCPUs -First 1
+        [array]$tmpresult  = $azureVMSkus | where { ($_.tmp_vCPUs    -in $bottomvCPUs) }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations += $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
     
     Write-Debug "Filtering VM SKUs by RAM."
-    $global:azureVMRecommendations = $global:azureVMRecommendations | where { ([decimal]::Parse($_.MemoryGB) -ge $estimatedRAM*0.9) }
+    try{
+        [array]$tmpResult = $global:azureVMRecommendations | where { ($_.tmp_MemoryGB -ge $estimatedRAM*0.9) }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     Write-Debug "Filtering VM SKUs by Family (D, E and M series)."
-    $global:azureVMRecommendations = $global:azureVMRecommendations | where { $_.family -like 'StandardD*' -or $_.family -like 'StandardE*' -or $_.family -like 'StandardM*' }
+    try{
+        [array]$tmpResult = $global:azureVMRecommendations | where { $_.family -like 'StandardD*' -or $_.family -like 'StandardE*' -or $_.family -like 'StandardM*' }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     Write-Debug "Filtering VM SKUs that don't support premium disks."
-    $global:azureVMRecommendations = $global:azureVMRecommendations | where { $_.PremiumIO -eq 'True' }
+    try{
+        [array]$tmpResult = $global:azureVMRecommendations | where { $_.PremiumIO -eq 'True' }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     Write-Debug "Filtering VM SKUs that don't support ultra disks."
-    $global:azureVMRecommendations = $global:azureVMRecommendations | where { $_.UltraSSDAvailable -eq 'True' }
+    try{
+        [array]$tmpResult = $global:azureVMRecommendations | where { $_.UltraSSDAvailable -eq 'True' }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     Write-Debug "Filtering VM SKUs that don't use HT."
-    $global:azureVMRecommendations = $global:azureVMRecommendations | where { [decimal]::Parse($_.vCPUsPerCore) -gt 1 }
+    try{
+        [array]$tmpResult = $global:azureVMRecommendations | where { $_.tmp_vCPUsPerCore -gt 1 }
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     Write-Debug "Filtering VM SKUs that don't support accelerated networking."
-    $global:azureVMRecommendations = $global:azureVMRecommendations | where { $_.AcceleratedNetworkingEnabled -eq 'True'}
+    try{
+        [array]$tmpResult = $global:azureVMRecommendations | where { $_.AcceleratedNetworkingEnabled -eq 'True'}
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
+    if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
+    Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
 
     $azureDiskSkus = $azureSkus | where {$_.resourceType -eq "disks"}
-
-    
-
+    }
+    catch {
+        Write-Output "Error generating recommendations."
+        Write-Output $_
+    }
 }
 
 ######################################### Export to Excel #########################################
@@ -465,7 +537,6 @@ function ExportToExcel(){
         [Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes)
     $tblSettings.Name = "SettingsTable"
     $tblSettings.ShowHeaders = $true
-    $tblSettings.ShowTotals = $true
     $tblSettings.TableStyle = "TableStyleMedium9"
     $wsSettings.Columns(1).ColumnWidth = 30
     $wsSettings.Columns(2).ColumnWidth = 10
@@ -585,7 +656,7 @@ function ExportToExcel(){
     }
 
     Write-Debug "Populating Instance Summary table..."
-    $instSummaryData = $global:awrDataAll | Select-Object DBName,InstanceName -Unique
+    [array]$instSummaryData = $global:awrDataAll | Select-Object DBName,InstanceName -Unique
 
     for($i=0;$i -lt $instSummaryData.Length;$i++) {
         if($i -gt 0) {$tblInstSummary.ListRows.Add() | Out-Null}
@@ -649,7 +720,7 @@ function ExportToExcel(){
     }
 
     Write-Debug "Populating for Host Summary table..."
-    $hostSummaryData = $global:awrDataAll | Select-Object HostName -Unique
+    [array]$hostSummaryData = $global:awrDataAll | Select-Object HostName -Unique
 
     for($i=0;$i -lt $hostSummaryData.Length;$i++) {
         if($i -gt 0) {$tblHostSummary.ListRows.Add() | Out-Null}
@@ -714,7 +785,7 @@ function ExportToExcel(){
     }
 
     Write-Debug "Populating DB Summary table..."
-    $dbSummaryData = $global:awrDataAll | Select-Object DBName -Unique
+    [array]$dbSummaryData = $global:awrDataAll | Select-Object DBName -Unique
 
     for($i=0;$i -lt $dbSummaryData.Length;$i++) {
         if($i -gt 0) {$tblDBSummary.ListRows.Add() | Out-Null}
@@ -751,21 +822,50 @@ function ExportToExcel(){
     Write-Debug "Fetching required capacity from Excel."
     for($i=0;$i -lt $global:dbSummaryColumnDefinitions.Length; $i++)
     {
+        [decimal]$tempd=0
         if ($global:dbSummaryColumnDefinitions[$i].columnName -like "EstimatedvCPU*" )
         {
-            $estimatedvCPU=[decimal]$tblDBSummary.TotalsRowRange.Item(1,$i+1).Text 
+            if([decimal]::TryParse($tblDBSummary.TotalsRowRange.Item(1,$i+1).Value() ,[ref]$tempd))
+            {
+                $estimatedvCPU=$tempd
+            }
+            else
+            {
+                $estimatedvCPU=0
+            }
         }
         elseif ($global:dbSummaryColumnDefinitions[$i].columnName -like "EstimatedRAM*" )
         {
-            $estimatedRAM=[decimal]$tblDBSummary.TotalsRowRange.Item(1,$i+1).Text 
+            if([decimal]::TryParse($tblDBSummary.TotalsRowRange.Item(1,$i+1).Value() ,[ref]$tempd))
+            {
+                $estimatedRAM=$tempd
+            }
+            else
+            {
+                $estimatedRAM=0
+            }
         }
         elseif ($global:dbSummaryColumnDefinitions[$i].columnName -like "EstimatedIOPS*" )
         {
-            $estimatedIOPS=[decimal]$tblDBSummary.TotalsRowRange.Item(1,$i+1).Text 
+            if([decimal]::TryParse($tblDBSummary.TotalsRowRange.Item(1,$i+1).Value() ,[ref]$tempd))
+            {
+                $estimatedIOPS=$tempd
+            }
+            else
+            {
+                $estimatedIOPS=0
+            }
         }
         elseif ($global:dbSummaryColumnDefinitions[$i].columnName -like "EstimatedThroughput*" )
         {
-            $estimatedIOThroughput=[decimal]$tblDBSummary.TotalsRowRange.Item(1,$i+1).Text 
+            if([decimal]::TryParse($tblDBSummary.TotalsRowRange.Item(1,$i+1).Value() ,[ref]$tempd))
+            {
+                $estimatedIOThroughput=$tempd
+            }
+            else
+            {
+                $estimatedIOThroughput=0
+            }
         }
 
     }
@@ -775,7 +875,7 @@ function ExportToExcel(){
     if ($null -ne $global:azureVMRecommendations)
     {
         Write-Debug "Writing $($global:azureVMRecommendations.Length) recomendations to Excel."
-        $VMObjectProps = $global:azureVMRecommendations[0].psobject.properties | select Name  #Get-Member -InputObject $global:azureVMRecommendations[0] -MemberType NoteProperty
+        $VMObjectProps = $global:azureVMRecommendations[0].psobject.properties | select Name  | where {$_.Name -notlike "tmp_*" }
 
         $tblStartRow=$tblDBSummary.ListRows.Item($tblDBSummary.ListRows.Count).Range.Offset(3).Row # Offset 3 rows: header row+total row+empty row
         PutExcelTableHeader $wsOma $tblStartRow $tblStartCol "Recommended Azure VMs for this workload"
@@ -816,11 +916,11 @@ function ExportToExcel(){
     
 }
 catch [System.Runtime.InteropServices.COMException] {
-    "An Excel related error has occured."
-    $_
+    Write-Output "An Excel related error has occured."
+    Write-Output $_
 }
 catch {
-    $_
+    Write-Output $_
 }
 finally
 {
@@ -836,8 +936,8 @@ finally
 }
 
 ######################################### Init global variables #########################################
-$global:awrDataAll=$null
-$global:azureVMRecommendations=$null
+[array]$global:awrDataAll=$null
+[array]$global:azureVMRecommendations=$null
 $global:RACReportTitle="WORKLOAD REPOSITORY REPORT (RAC)"
 $global:numProcessedFiles=0
 $global:awrDataColumnDefinitions =@(
@@ -911,10 +1011,18 @@ if($Help -eq $true)
     Write-Output "   -SourceFolder     : Source folder that contains AWR reports in HTML format. Default is '.' (current directory)."
     Write-Output "   -OutputFile       : Full path of the Excel file that will be created as output. Default is same name as SourceFolder directory name with XLSX extension under SourceFolder directory."
     Write-Output "   -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'."
+    Write-Output "   -Debug            : Generates debug output."
     Write-Output ""
     Write-Output "$($MyInvocation.MyCommand.Name) -SourceFolder `"C:\Reports`" -AzureRegion `"westus`""
     Exit 0
 }
+
+if ($PSBoundParameters['Debug']) {
+    $DebugPreference = 'Continue'
+}
+
+Write-Debug "Starting..."
+Write-Debug "DebugPreference=$DebugPreference"
 
 if (-not (Test-Path $SourceFolder -PathType Container))
 {
