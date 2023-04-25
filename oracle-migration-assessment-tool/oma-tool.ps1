@@ -115,7 +115,7 @@ function ProcessAWRReport {
         [string]$awrReportFileName
     )
     
-    Write-Output "$($global:numProcessedFiles+1)-Processing file : $awrReportFileName"
+    Write-Host "$($global:numProcessedFiles+1)-Processing file : $awrReportFileName"
 
     try {
 
@@ -204,7 +204,7 @@ function ProcessAWRReport {
             }
         }
         else {
-            Write-Output "HTML table cannot be found summary=`"Time Model*`" while processing file `"$awrReportFileName`""
+            Write-Host "HTML table cannot be found summary=`"Time Model*`" while processing file `"$awrReportFileName`""
         }
 
         $tblOSStatistics=$html.body.getElementsByTagName('table') | Where {$_.summary -like 'OS Statistics By Instance*'} 
@@ -223,7 +223,7 @@ function ProcessAWRReport {
         
         }
         else {
-            Write-Output "HTML table cannot be found summary=`"OS Statistics By Instance*`" while processing file `"$awrReportFileName`""
+            Write-Host "HTML table cannot be found summary=`"OS Statistics By Instance*`" while processing file `"$awrReportFileName`""
         }
 
         $tblCacheSizes=$html.body.getElementsByTagName('table') | Where {$_.summary -like 'Cache Sizes*'} 
@@ -243,7 +243,7 @@ function ProcessAWRReport {
             }
         }
         else {
-            Write-Output "HTML table cannot be found summary=`"Cache Sizes*`" while processing file `"$awrReportFileName`""
+            Write-Host "HTML table cannot be found summary=`"Cache Sizes*`" while processing file `"$awrReportFileName`""
         }
 
 
@@ -300,7 +300,7 @@ function ProcessAWRReport {
             }
         }
         else {
-            Write-Output "HTML table cannot be found summary=`"IOStat by File Type*`" while processing file `"$awrReportFileName`""
+            Write-Host "HTML table cannot be found summary=`"IOStat by File Type*`" while processing file `"$awrReportFileName`""
         }
 
         Write-Debug "awrData contains $($awrData.Length) element(s)"
@@ -313,8 +313,8 @@ function ProcessAWRReport {
     }
     }
     catch {
-        Write-Output "Error processing file `"$awrReportFileName`":"
-        Write-Output $_
+        Write-Host "Error processing file `"$awrReportFileName`":"
+        Write-Host ($_ | out-string)
     }
     finally{
         Write-Debug "Releasing DOM object..."
@@ -344,7 +344,20 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
     Write-Host "Generating recommendations ..."
     Write-Debug "Fetching available Azure VM SKUs in $AzureRegion ..."
     try{
-    $json=az vm list-skus --all --location $AzureRegion | ConvertFrom-Json
+    
+    # Problem is that JSON reurned from "az vm list-skus" call can include two attributes with the same name but diferent casing: "locationInfo.zoneDetails.Name" and 
+    # "locationInfo.zoneDetails.name". Therefore "ConvertFrom-Json" raises an error. In order to solve this problem properly, "-AsHashtable" parameter is provided for 
+    # "ConvertFrom-Json".
+    # However "-AsHashTable" parameter works only for PowerShell v6 and above. At the moment, we do not need the "Name" attribute in JSON anyway. 
+    # Implemented a workaround so that instead of calling "ConvertFrom-Json" with "-AsHashtable" attribute, we'll just rename the attribute from "Name" to "_Name"
+    # This workaround will also remove the need to upgrade PowerShell installation. 
+    # Original Code: $json=az vm list-skus --all --location $AzureRegion | ConvertFrom-Json -AsHashtable
+    $stemp=az vm list-skus --all --location $AzureRegion 
+    $stemp=$stemp -creplace "`"Name`"","`"_Name`""
+    $json= $stemp | ConvertFrom-Json
+    # workaround ends here
+
+
     $azureSkus = $json | ForEach-Object {
         $objectProps=[ordered]@{
             name = $_.name
@@ -372,8 +385,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpresult = $azureVMSkus | where { ($_.tmp_vCPUs -ge $estimatedvCPU*0.7) -and ($_.tmp_vCPUs -le $estimatedvCPU) -and ($_.MemoryGB -ge $estimatedRAM*0.7) }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -384,8 +397,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpresult  = $azureVMSkus | where { ($_.tmp_vCPUs    -in $bottomvCPUs) }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations += $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -395,8 +408,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpResult = $global:azureVMRecommendations | where { ($_.tmp_MemoryGB -ge $estimatedRAM*0.9) }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -406,8 +419,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpResult = $global:azureVMRecommendations | where { $_.family -like 'StandardD*' -or $_.family -like 'StandardE*' -or $_.family -like 'StandardM*' }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -417,8 +430,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpResult = $global:azureVMRecommendations | where { $_.PremiumIO -eq 'True' }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -428,8 +441,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpResult = $global:azureVMRecommendations | where { $_.UltraSSDAvailable -eq 'True' }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -439,8 +452,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpResult = $global:azureVMRecommendations | where { $_.tmp_vCPUsPerCore -gt 1 }
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -450,8 +463,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
         [array]$tmpResult = $global:azureVMRecommendations | where { $_.AcceleratedNetworkingEnabled -eq 'True'}
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
     if($null -ne $tmpresult){$global:azureVMRecommendations = $tmpResult}
     Write-Debug "Current # of recommendations:$($global:azureVMRecommendations.Length)"
@@ -459,8 +472,8 @@ function GenerateRecommendations([decimal]$estimatedvCPU, [decimal]$estimatedRAM
     $azureDiskSkus = $azureSkus | where {$_.resourceType -eq "disks"}
     }
     catch {
-        Write-Output "Error generating recommendations."
-        Write-Output $_
+        Write-Host "Error generating recommendations."
+        Write-Host ($_ | out-string)
     }
 }
 
@@ -916,11 +929,11 @@ function ExportToExcel(){
     
 }
 catch [System.Runtime.InteropServices.COMException] {
-    Write-Output "An Excel related error has occured."
-    Write-Output $_
+    Write-Host "An Excel related error has occured."
+    Write-Host ($_ | out-string)
 }
 catch {
-    Write-Output $_
+    Write-Host ($_ | out-string)
 }
 finally
 {
@@ -1005,15 +1018,15 @@ $global:dbSummaryColumnDefinitions =@(
 ######################################### MAIN #########################################
 if($Help -eq $true)
 {
-    Write-Output "Usage: $($MyInvocation.MyCommand.Name) [OPTIONS]"
-    Write-Output "OPTIONS:"
-    Write-Output "   -h, Help          : Display this screen."
-    Write-Output "   -SourceFolder     : Source folder that contains AWR reports in HTML format. Default is '.' (current directory)."
-    Write-Output "   -OutputFile       : Full path of the Excel file that will be created as output. Default is same name as SourceFolder directory name with XLSX extension under SourceFolder directory."
-    Write-Output "   -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'."
-    Write-Output "   -Debug            : Generates debug output."
-    Write-Output ""
-    Write-Output "$($MyInvocation.MyCommand.Name) -SourceFolder `"C:\Reports`" -AzureRegion `"westus`""
+    Write-Host "Usage: $($MyInvocation.MyCommand.Name) [OPTIONS]"
+    Write-Host "OPTIONS:"
+    Write-Host "   -h, Help          : Display this screen."
+    Write-Host "   -SourceFolder     : Source folder that contains AWR reports in HTML format. Default is '.' (current directory)."
+    Write-Host "   -OutputFile       : Full path of the Excel file that will be created as output. Default is same name as SourceFolder directory name with XLSX extension under SourceFolder directory."
+    Write-Host "   -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'."
+    Write-Host "   -Debug            : Generates debug output."
+    Write-Host ""
+    Write-Host "$($MyInvocation.MyCommand.Name) -SourceFolder `"C:\Reports`" -AzureRegion `"westus`""
     Exit 0
 }
 
@@ -1024,20 +1037,39 @@ if ($PSBoundParameters['Debug']) {
 Write-Debug "Starting..."
 Write-Debug "DebugPreference=$DebugPreference"
 
+
+# if ($PSVersionTable.PSVersion.Major -lt 6)
+# {
+#     Write-Host "PowerShell version 6 upwards is required. Your version is $($PSVersionTable.PSVersion)"
+#     Write-Host "Install latest LTS release from: https://aka.ms/powershell-release?tag=lts"
+#     Write-Host "Exiting."
+#     Exit
+# }
+
 if (-not (Test-Path $SourceFolder -PathType Container))
 {
-    throw "Source folder not found: $SourceFolder"
+    Write-Host "Source folder not found: $SourceFolder"
+    Write-Host "Exiting."
+    Exit
 }
 
 $src=Get-Item $sourceFolder
 $sourceFolder=$src.FullName
-Write-Output "Processing files from directory : $SourceFolder"
+Write-Host "Processing files from directory : $SourceFolder"
 
 if([string]::IsNullOrEmpty($OutputFile))
 {
     $global:outputExcel="$($src.FullName)\$($src.Name).xlsx"
 }
 else {
+    if($OutputFile -notlike "*.xlsx")
+    {
+        $OutputFile = "$OutputFile.xlsx"
+    }
+    if(-not $OutputFile.Contains("\"))
+    {
+        $OutputFile = "$($src.FullName)\$OutputFile"
+    }
     $global:outputExcel=$OutputFile
 }
 
@@ -1045,12 +1077,12 @@ if (Test-Path $global:outputExcel -PathType Leaf)
 {
     if ($DebugPreference -eq "Continue")
     {
-        Write-Output "Overwriting output file : `"$global:outputExcel`""
+        Write-Host "Overwriting output file : `"$global:outputExcel`""
         Remove-Item -LiteralPath $global:outputExcel
     }
     else {
-        Write-Output "Output file already exists : `"$global:outputExcel`""
-        Write-Output "Exiting."
+        Write-Host "Output file already exists : `"$global:outputExcel`""
+        Write-Host "Exiting."
         Exit
     }
 }
@@ -1059,11 +1091,11 @@ Get-ChildItem -Path $sourceFolder -File -Filter *.html | ForEach-Object {Process
 if($global:numProcessedFiles -gt 0)
 {
     ExportToExcel  | Out-Null
-    Write-Output "Finished processing files from directory : `"$SourceFolder`""
-    Write-Output "Results are stored in : `"$global:outputExcel`""
+    Write-Host "Finished processing files from directory : `"$SourceFolder`""
+    Write-Host "Results are stored in : `"$global:outputExcel`""
 }
 else {
-    Write-Output "No AWR report files found in directory : `"$SourceFolder`""
-    Write-Output "Nothing to process. Exiting."
+    Write-Host "No AWR report files found in directory : `"$SourceFolder`""
+    Write-Host "Nothing to process. Exiting."
 }
 
