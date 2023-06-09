@@ -4,6 +4,7 @@ Write-Host "Unblocking omat.ps1"
 Unblock-File -Path .\omat.ps1
 Write-Host "Downloading template.xlsm"
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/template.xlsm -OutFile .\template.xlsm
+Write-Host "Unblocking template.xlsm"
 Unblock-File -Path .\template.xlsm
 
 $azCmd=Get-Command -Name 'az' -ErrorAction SilentlyContinue 
@@ -17,5 +18,8 @@ if($null -eq $azCmd) {
     Write-Host "Cleanup Azure CLI install files."
     Remove-Item .\AzureCLI.msi
 }
-
-
+else
+{
+    Write-Host "Azure CLI found."
+    Write-Host (az --version 2>$null)[0]
+}
