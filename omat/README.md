@@ -16,12 +16,12 @@ OMAT essentially automates steps defined in the [AWR sizing document](/az-oracle
 Please review prerequisites and limitations of OMAT before using it for your scenario
 
 * PowerShell 5.1 or above is required. PowerShell 5.1 comes preinstalled with Windows 10 and Windows 11. For more information refer to https://learn.microsoft.com/en-us/powershell/scripting/windows-powershell/install/installing-windows-powershell 
-* Azure CLI 2.40 or or above is required. Install Azure CLI from https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows?tabs=azure-cli
+* Azure CLI 2.40 or or above is required. Setup script will automatically install the latest version or you can manually install Azure CLI from https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows?tabs=azure-cli
 * Excel 2019 or above is required
 * PowerShell core is not supported (due to COM dependencies)
 * AWR Reports  (created by running **awrrpt.sql**) or AWR Global (RAC) reports (created by running **awrgrpt.sql**) supported.
 
-## How to use the tool
+## How to install the tool
 
 * Run PowerShell in Administrator mode.
 * Copy and paste following command line into PowerShell window to set up the tool. This will create a folder **C:\OMAT** and download all required files into that folder. If you want to use a different folder, change the path in the command below. Setup script will also install Azure CLI if not already installed.
@@ -29,6 +29,8 @@ Please review prerequisites and limitations of OMAT before using it for your sce
     ```powershell
     New-Item -ItemType Directory -Force -Path C:\OMAT;Set-Location C:\OMAT;Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser;Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/setup.ps1 -OutFile .\setup.ps1;Unblock-File -Path .\setup.ps1;.\setup.ps1
     ```
+
+## How to use the tool
 
 * Copy all AWR files you collected in a folder: C:\AWR.
 * Run `omat.ps1` as below
