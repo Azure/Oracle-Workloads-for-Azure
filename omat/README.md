@@ -69,18 +69,25 @@ Please review prerequisites and limitations of OMAT before using it for your sce
 
 * **Data** page contains data for capacity planning and calculations. You can consider this page as the input data for recommendations.
   * **AWR Details** table contains raw extracted information from your AWR reports
+    ![AWR Details](media/data-awr-details.png)
+    Review and make sure AWR Details table does not have any missing values and existing values make sense. If there are missing values (the cells will indicate that with a red color), you may enter those values manually by talking to customer or using your best judgement.
   * **Summary by Database Instance** summarizes information in **AWR Details** by Instance
   * **Summary by Host Server** summarizes information in **AWR Details** by Host
   * **Summary by Database** summarizes information in **AWR Details** by Database. Results in the **Totals** section of this table is used to calculate required virtual machine sizes on Azure.
-  * Review and make sure AWR Details table does not have any missing values and existing values make sense. If there are missing values (the cells will indicate that with a red color), you may enter those values manually by talking to customer or using your best judgement.
+    Make sure to determine which server on Azure the database should be placed (first column). By default all databases are placed on a single server named **Server1** Also make sure to enter database sizes in this table (the last column).
+    ![Consolidated performance values at database level](media/data-summary-by-db.png)
 * **Recommendations** page contains recommended Azure resources for your workload.
   * **Refresh Recommendations** button allows to re-calculate recommendations based on your choices.
   * Slicers at the top of the page allow you to limit recommendations to certain SKU classes. By default, tool applies best practices and recommends a minimal # of SKUs as alternatives.
+    ![Recommendation settings](media/recommendations-filters.png)
   * **Summary by Azure Server** table aggregates metrics per database instance and calculates amount of resources required for each Azure VM.
   * **Recommended Azure VMs** table contains alternative Azure VM SKUs for your requirements. This table is refreshed every time you click **Refresh Recommendations** button.
+    ![Recommended Virtual Machine SKUs and Network Attached Storage (NAS) options](media/recommendations-vms.png)
   * **Recommended DAS Storage Options for this workload** table is extension to  **Recommended Azure VMs** table and contains alternative Direct Attached Storage (DAS) options using Azure MAnaged Disks per recommended Azure VM SKUs for your requirements. This table is refreshed every time you click **Refresh Recommendations** button and you have to scroll right to see table contents.  
+    ![Recommended managed disk (Direct Attached Storage/DAS) options](media/recommendations-storage.png)
   * **Recommended NAS Storage Options for this workload** table shows Network Attached Storage (NAS) options for the workload.
 * **Settings** page allows you modify parameters to customize the way recommendations are calculated.
+    ![Application settings](media/settings.png)
   * **Est'd Peak CPU factor** Observed vCPU requirements from the AWR reports will be multiplied by this factor to calculate amount of CPU required on Azure. For example, if observed CPU usage requires 10 vCPUs and this factor is 2, required CPU on Azure will be calculated as 20 vCPUs.
   * **Est'd Peak RAM factor** Observed memory requirements from the AWR reports will be multiplied by this factor to calculate amount of memory required on Azure. For example, if observed memory usage is 10GB and this factor is 2, required memory on Azure will be calculated as 20GB.
   * **Est'd Peak I/O factor** Observed I/O requirements (both throughput and IOPS) from the AWR reports will be multiplied by this factor to calculate amount of I/O throughput and IOPS required on Azure. For example, if observed I/O throughput usage is 500MB/sec and this factor is 2, required I/O throughput on Azure will be calculated as 1000MB/sec.
