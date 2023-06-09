@@ -27,7 +27,7 @@ Please review prerequisites and limitations of OMAT before using it for your sce
 * Copy and paste following command line into PowerShell window to set up the tool. This will create a folder **C:\OMAT** and download all required files into that folder. If you want to use a different folder, change the path in the command below. Setup script will also install Azure CLI if not already installed.
 
     ```powershell
-    New-Item -ItemType Directory -Force -Path C:\OMAT;Set-Location C:\OMAT;Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser;Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/setup.ps1 -OutFile .\setup.ps1;Unblock-File -Path .\setup.ps1;.\setup.ps1
+    New-Item -ItemType Directory -Force -Path C:\OMAT | Out-Null;Set-Location C:\OMAT;Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser;Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/setup.ps1 -OutFile .\setup.ps1;Unblock-File -Path .\setup.ps1;.\setup.ps1
     ```
 
 ## How to use the tool
