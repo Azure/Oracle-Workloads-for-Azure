@@ -806,7 +806,13 @@ function ExportToExcel(){
         $global:awrDataAll = $global:awrDataAll | 
             Group-Object -Property InstanceIndex,Release,DBName,InstanceName,HostName | 
             ForEach-object {
-                $elapsedTime,$dbTime,$dbCpu = ($_.Group|Measure-Object ElapsedTime,DBTime,DBCPU -Sum    ).Sum
+                #$elapsedTime,$dbTime,$dbCpu = ($_.Group|Measure-Object ElapsedTime,DBTime,DBCPU -Sum    ).Sum
+                $MaxAAS      =($_.Group | Select-Object @{n='AAS'           ;e={[math]::Round($_.DBTime / $_.ElapsedTime,3)}} | Measure-Object AAS -Maximum).Maximum
+                $MaxAASRow   = $_.Group | Select-Object ElapsedTime,DBTime,DBCPU,@{n='AAS'           ;e={[math]::Round($_.DBTime / $_.ElapsedTime,3)}} | Where-Object AAS -eq $MaxAAS  | Select-Object ElapsedTime,DBTime,DBCPU -First 1
+                $elapsedTime = $MaxAASRow.ElapsedTime
+                $dbTime      = $MaxAASRow.DBTime
+                $dbCpu       = $MaxAASRow.DBCPU
+
                 $CPUs,$Cores,$Memory        = ($_.Group|Measure-Object CPUs,Cores,Memory        -Maximum).Maximum
                 $SGAUse,$PGAUse             = ($_.Group|Measure-Object SGAUse,PGAUse            -Maximum).Maximum
                 $BusyCpu, $ReadThroughput, $ReadIOPS, $WriteThroughput, $WriteIOPS = ($_.Group|Measure-Object BusyCpu, ReadThroughput, ReadIOPS, WriteThroughput, WriteIOPS -Maximum).Maximum
