@@ -14,7 +14,10 @@ Param(
     [string]$AzureRegion="westus",
 
     [Parameter(mandatory=$false)]
-    [string]$TemplateFileName="template.xlsm"
+    [string]$TemplateFileName="template.xlsm",
+
+    [Parameter()]
+    [switch]$NoAwr
 
     )
         
@@ -872,6 +875,8 @@ function ExportToExcel(){
     $wbOma = $XL.Workbooks.Open($global:outputExcel, $false) #UpdateLinks:=false
     $wsOma = $wbOma.Worksheets.Item("Data")
 
+    if (-not $NoAwr.IsPresent)
+    {
     Write-Host "Exporting tables ..."
     $OperationsStartedAt=Get-Date
 
@@ -889,14 +894,6 @@ function ExportToExcel(){
             if (-not $tblAwr.DataBodyRange.Item($i+1,$j+1).HasFormula())
             {
                 $value = $global:awrDataAll[$i]."$($props[$j].Name)"
-                # if($props[$j].Name -eq "Memory")
-                # {
-                #     $value /= 1024
-                # }
-                # elseif($props[$j].Name -eq "BusyCPU")
-                # {
-                #     $value /= 100
-                # }
                 $tblAwr.DataBodyRange.Item($i+1,$j+1) = $value
                 if($props[$j].Name -eq "AWRReportFileName")
                 {
@@ -966,6 +963,37 @@ function ExportToExcel(){
     }
 
     Write-Debug "Export tables took $($($($(Get-Date) - $OperationsStartedAt)).TotalSeconds) seconds"
+    }
+    else{
+        $temp = $XL.DisplayAlerts
+        $XL.DisplayAlerts = $false
+        $wsOma.Delete() | Out-Null
+        $XL.DisplayAlerts = $temp
+        $wsOma=$null
+        $wsRecommendations = $wbOma.Worksheets.Item("Recommendations")
+        $tblAzureServerSummary = $wsRecommendations.ListObjects.Item("AzureServerSummary")
+        $tblAzureServerSummary.DataBodyRange.Item(1,1) = "Server1"
+        $tblAzureServerSummary.DataBodyRange.Item(1,2) = ""
+        $tblAzureServerSummary.DataBodyRange.Item(1,3) = "<not used>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,4) = "<not used>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,5) = "<enter data>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,6) = "<not used>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,7) = "<not used>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,8) = "<enter data>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,9) = "<enter data>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,10) = "<not used>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,11) = "<enter data>"
+        $tblAzureServerSummary.DataBodyRange.Item(1,12) = "<enter data>"
+        for($i=1;$i -lt $tblAzureServerSummary.DataBodyRange.Columns.Count;$i++) {
+            if($tblAzureServerSummary.DataBodyRange.Item(1,$i+1).Text -eq "<not used>")
+            {
+                $tblAzureServerSummary.DataBodyRange.Item(1,$i+1).Font.ThemeColor = 3 #xlThemeColorDark2            
+                $tblAzureServerSummary.DataBodyRange.Item(1,$i+1).Font.TintAndShade = -0.5 #50% lighter
+                $tblAzureServerSummary.DataBodyRange.Item(1,$i+1).HorizontalAlignment = -4108 #xlCenter
+
+            }
+        }
+    }
 
     if ([string]::IsNullOrEmpty($AzureRegion))
     {
@@ -1156,7 +1184,7 @@ function ExportToExcel(){
         foreach($obj in $azureVMSkus)
         {
             if(($obj.Class -eq 'E') -and 
-            (-not $obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
+            ($obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
                 if (($obj.Version -eq 'v5') -or
@@ -1166,7 +1194,7 @@ function ExportToExcel(){
                 }
             }
             elseif(($obj.Class -eq 'M') -and 
-            (-not $obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
+            (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
                 if (($obj.Version -eq 'v2') -or
@@ -1429,8 +1457,11 @@ function ExportToExcel(){
             }
         }
 
-        Write-Host "Refreshing recommendations..."
-        $XL.Run('RefreshRecommendations')
+        if(-not $NoAwr.IsPresent)
+        {
+            Write-Host "Refreshing recommendations..."
+            $XL.Run('RefreshRecommendations')
+        }
     }
     else
     {
@@ -1456,8 +1487,17 @@ finally
     Write-Debug "Saving Excel file ($global:outputExcel)..."
     if($null -ne $wbOma)
     {
-        $wbOma.Worksheets.Item("Data").Activate() | Out-Null
-        $wbOma.Worksheets.Item("Data").Cells(1,1).Activate() | Out-Null
+        if($null -ne $wsOma)
+        {
+            $wsOma.Activate() | Out-Null
+            $wsOma.Cells(1,1).Activate() | Out-Null
+        }
+        elseif($null -ne $wsRecommendations)
+        {
+            $wsRecommendations.Activate() | Out-Null
+            $wsRecommendations.Cells(1,1).Activate() | Out-Null
+        }
+        
         $wbOma.Save() | Out-Null #($global:outputExcel,$global:XlFileFormat_xlOpenXMLWorkbookMacroEnabled) 
         $wbOma.Close($false) | Out-Null 
         Unblock-File -Path $global:outputExcel
@@ -1465,13 +1505,14 @@ finally
     Write-Debug "Closing Excel ..."
     if($null -ne $XL)
     {
-        $wsOma = $null
-        $wsAzurePriceList = $null
-        $wsAzureVmSkus = $null
-        $wsAzureDiskSkus = $null
-        $wbOma = $null
         $XL.Quit() | Out-Null 
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($XL) | Out-Null
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wsOma) | Out-Null}catch{}
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wsRecommendations) | Out-Null}catch{}
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wsAzurePriceList) | Out-Null}catch{}
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wsAzureVmSkus) | Out-Null}catch{}
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wsAzureDiskSkus) | Out-Null}catch{}
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($wbOma) | Out-Null}catch{}
+        try{[System.Runtime.Interopservices.Marshal]::ReleaseComObject($XL) | Out-Null}catch{}
         [System.GC]::Collect() | Out-Null 
         [System.GC]::WaitForPendingFinalizers() | Out-Null 
     }
@@ -1504,6 +1545,7 @@ $global:azureSizeStringRegex = [regex]$azureSizeStringRegExPattern
     Write-Host "OPTIONS:"
     Write-Host "   -h, Help          : Display this screen."
     Write-Host "   -SourceFolder     : Source folder that contains AWR reports in HTML format. Default is '.' (current directory)."
+    Write-Host "   -NoAwr            : Creates an empty file so that you can manually enter vCPU, memory and disk requirements and generate recommendations."
     Write-Host "   -OutputFile       : Full path of the Excel file that will be created as output. Default is same name as SourceFolder directory name with XLSM extension under SourceFolder directory."
     Write-Host "   -TemplateFileName : Excel templatethat will be used for capacity estimations. Default is '.\template.xlsm'."
     Write-Host "   -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'."
@@ -1545,23 +1587,45 @@ if (-not (Test-Path $SourceFolder -PathType Container))
     Exit
 }
 
-$src=Get-Item $sourceFolder
-$sourceFolder=$src.FullName
-
-if([string]::IsNullOrEmpty($OutputFile))
+if(-not $NoAwr.IsPresent)
 {
-    $global:outputExcel="$($src.FullName)\$($src.Name).xlsm"
+    $src=Get-Item $sourceFolder
+    $sourceFolder=$src.FullName
+
+    if([string]::IsNullOrEmpty($OutputFile))
+    {
+        $global:outputExcel="$($src.FullName)\$($src.Name).xlsm"
+    }
+    else {
+        if($OutputFile -notlike "*.xlsm")
+        {
+            $OutputFile = "$OutputFile.xlsm"
+        }
+        if(-not $OutputFile.Contains("\"))
+        {
+            $OutputFile = "$($src.FullName)\$OutputFile"
+        }
+        $global:outputExcel=$OutputFile
+    }
 }
-else {
-    if($OutputFile -notlike "*.xlsm")
+else
+{
+    if([string]::IsNullOrEmpty($OutputFile))
     {
-        $OutputFile = "$OutputFile.xlsm"
+        $rnd=Get-Random -Minimum 1000 -Maximum 9999
+        $global:outputExcel=".\OMAT-NoAwr-$rnd.xlsm"
     }
-    if(-not $OutputFile.Contains("\"))
-    {
-        $OutputFile = "$($src.FullName)\$OutputFile"
+    else {
+        if($OutputFile -notlike "*.xlsm")
+        {
+            $OutputFile = "$OutputFile.xlsm"
+        }
+        if(-not $OutputFile.Contains("\"))
+        {
+            $OutputFile = ".\$OutputFile"
+        }
+        $global:outputExcel=$OutputFile
     }
-    $global:outputExcel=$OutputFile
 }
 
 $azureAccountJson=az account show 2>$null
@@ -1583,14 +1647,18 @@ if($null -eq $azureRegionFound)
     Exit
 }
 else {
-    $azureAccount = $azureAccountJson | ConvertFrom-Json
-    Write-Host "Connected to subscription '$($azureAccount.name)' ($($azureAccount.id)) as '$($azureAccount.user.name)'"
     Write-Host "Using Azure region '$AzureRegion'"
 }
 
 
-
-Write-Host "Processing files from directory : $SourceFolder"
+if($NoAwr.IsPresent)
+{
+    Write-Host "No AWR files given. You will need to manually enter required values in the output Excel generated."
+}
+else
+{
+    Write-Host "Processing files from directory : $SourceFolder"
+}
 
 if (-not (Test-Path $TemplateFileName -PathType Leaf))
 {
@@ -1616,16 +1684,27 @@ if (Test-Path $global:outputExcel -PathType Leaf)
     }
 }
 
-Get-ChildItem -Path $sourceFolder -File -Filter *.html | ForEach-Object {ProcessAWRReport -awrReportFileName $_.FullName}
-if($global:numProcessedFiles -gt 0)
+if (-not $NoAwr.IsPresent)
+{
+    Get-ChildItem -Path $sourceFolder -File -Filter *.html | ForEach-Object {ProcessAWRReport -awrReportFileName $_.FullName}
+}
+if($global:numProcessedFiles -gt 0 -or $NoAwr.IsPresent)
 {
     ExportToExcel  | Out-Null
-    Write-Host "Finished processing files from directory : $SourceFolder in $($($($(Get-Date) - $ScriptStartAt)).TotalSeconds) seconds" -ForegroundColor Green
-    Write-Host "Open the Excel file `"$global:outputExcel`" to review recommendations." -ForegroundColor Green
-    Write-Host "Note that the file uses macros so ensure macros are enabled in Excel. See following link for step by step instructions: https://support.microsoft.com/en-us/office/enable-or-disable-macros-in-microsoft-365-files-12b036fd-d140-4e74-b45e-16fed1a7e5c6" -ForegroundColor Green
+    if($NoAwr.IsPresent)
+    {
+        Write-Host "Created file `"$global:outputExcel`" with no AWR data, open the file and manually enter vCPU, memory and disk requirements in `"Azure Server Summary`" table." -ForegroundColor Green
+    }
+    else
+    {
+        Write-Host "Finished processing files from directory : $SourceFolder in $($($($(Get-Date) - $ScriptStartAt)).TotalSeconds) seconds" -ForegroundColor Green
+        Write-Host "Open the Excel file `"$global:outputExcel`" to review recommendations." -ForegroundColor Green
+    }
+    Write-Host "Note macros are required to be enabled in Excel. See following link to enable macros: https://support.microsoft.com/en-us/office/enable-or-disable-macros-in-microsoft-365-files-12b036fd-d140-4e74-b45e-16fed1a7e5c6" -ForegroundColor Green
 }
 else {
     Write-Host "No AWR report files found in directory : $SourceFolder" -ForegroundColor Red
+    Write-Host "If you would like to create an empty file and manually enter requirements, use -NoAwr switch to run the tool." -ForegroundColor Red
     Write-Host "Nothing to process. Exiting." -ForegroundColor Red
 }
 
@@ -1638,5 +1717,3 @@ trap {
 }
 
 
-#instrumented run command
-# $d=get-date;.\oma-tool-beta-3.ps1 -SourceFolder ".\Awrs\19.0.0.0.0_RAC" -AzureRegion eastus;"Operation took $($($($(Get-Date) - $d)).TotalSeconds) seconds."

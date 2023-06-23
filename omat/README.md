@@ -67,7 +67,7 @@ Please review prerequisites and limitations of OMAT before using it for your sce
 
 * Open the output file **C:\AWR\AWR.xlsm**. More info on how to interpret this file can be found in [AWR sizing document](/az-oracle-sizing/AWR%20Sizing%20Instructions.pdf). Below are descriptions for each worksheet in the Excel file.
 
-* **Data** page contains data for capacity planning and calculations. You can consider this page as the input data for recommendations.
+* **Data** page contains data for capacity planning and calculations. You can consider this page as the input data for recommendations. This page does not exist if the tool is run with `NoAwr` switch.
   * **AWR Details** table contains raw extracted information from your AWR reports
     ![AWR Details](media/data-awr-details.png)
     Review and make sure AWR Details table does not have any missing values and existing values make sense. If there are missing values (the cells will indicate that with a red color), you may enter those values manually by talking to customer or using your best judgement.
@@ -117,6 +117,7 @@ Options:
 ```powershell
 -h, Help          : Display this screen.
 -SourceFolder     : Source folder that contains AWR reports in HTML format. Default is '.' (current directory).
+-NoAwr            : Creates an empty file so that you can manually enter vCPU, memory and disk requirements and generate recommendations.
 -OutputFile       : Full path of the Excel file that will be created as output. Default is same name as SourceFolder directory name with XLSM extension under SourceFolder directory.
 -TemplateFileName : Excel template that will be used for capacity estimations. Default is '.\template.xlsm'.
 -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'.
