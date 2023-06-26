@@ -16,18 +16,23 @@ OMAT essentially automates steps defined in the [AWR sizing document](/az-oracle
 Please review prerequisites and limitations of OMAT before using it for your scenario
 
 * PowerShell 5.1 or above is required. PowerShell 5.1 comes preinstalled with Windows 10 and Windows 11. For more information refer to https://learn.microsoft.com/en-us/powershell/scripting/windows-powershell/install/installing-windows-powershell 
-* Azure CLI 2.40 or or above is required. Install Azure CLI from https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows?tabs=azure-cli
+* Azure CLI 2.40 or or above is required. Setup script will automatically install the latest version or you can manually install Azure CLI from https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-windows?tabs=azure-cli
 * Excel 2019 or above is required
 * PowerShell core is not supported (due to COM dependencies)
 * AWR Reports  (created by running **awrrpt.sql**) or AWR Global (RAC) reports (created by running **awrgrpt.sql**) supported.
 
+## How to install the tool
+
+* Run PowerShell in Administrator mode.
+* Copy and paste following command line into PowerShell window to set up the tool. This will create a folder **C:\OMAT** and download all required files into that folder. If you want to use a different folder, change the path in the command below. Setup script will also install Azure CLI if not already installed.
+
+    ```powershell
+    New-Item -ItemType Directory -Force -Path C:\OMAT | Out-Null;Set-Location C:\OMAT;Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser;Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/setup.ps1 -OutFile .\setup.ps1;Unblock-File -Path .\setup.ps1;.\setup.ps1
+    ```
+
 ## How to use the tool
 
-Follow steps below for an example usage
-
-* Clone the repo 
-* Run PowerShell command line and navigate to `omat` folder.
-* Copy all AWR files you collected in a folder: C:\AWR. 
+* Copy all AWR files you collected in a folder: C:\AWR.
 * Run `omat.ps1` as below
 
     ```powershell
@@ -62,20 +67,27 @@ Follow steps below for an example usage
 
 * Open the output file **C:\AWR\AWR.xlsm**. More info on how to interpret this file can be found in [AWR sizing document](/az-oracle-sizing/AWR%20Sizing%20Instructions.pdf). Below are descriptions for each worksheet in the Excel file.
 
-* **Data** page contains data for capacity planning and calculations. You can consider this page as the input data for recommendations.
+* **Data** page contains data for capacity planning and calculations. You can consider this page as the input data for recommendations. This page does not exist if the tool is run with `NoAwr` switch.
   * **AWR Details** table contains raw extracted information from your AWR reports
+    ![AWR Details](media/data-awr-details.png)
+    Review and make sure AWR Details table does not have any missing values and existing values make sense. If there are missing values (the cells will indicate that with a red color), you may enter those values manually by talking to customer or using your best judgement.
   * **Summary by Database Instance** summarizes information in **AWR Details** by Instance
   * **Summary by Host Server** summarizes information in **AWR Details** by Host
   * **Summary by Database** summarizes information in **AWR Details** by Database. Results in the **Totals** section of this table is used to calculate required virtual machine sizes on Azure.
-  * Review and make sure AWR Details table does not have any missing values and existing values make sense. If there are missing values (the cells will indicate that with a red color), you may enter those values manually by talking to customer or using your best judgement.
+    Make sure to determine which server on Azure the database should be placed (first column). By default all databases are placed on a single server named **Server1** Also make sure to enter database sizes in this table (the last column).
+    ![Consolidated performance values at database level](media/data-summary-by-db.png)
 * **Recommendations** page contains recommended Azure resources for your workload.
   * **Refresh Recommendations** button allows to re-calculate recommendations based on your choices.
   * Slicers at the top of the page allow you to limit recommendations to certain SKU classes. By default, tool applies best practices and recommends a minimal # of SKUs as alternatives.
+    ![Recommendation settings](media/recommendations-filters.png)
   * **Summary by Azure Server** table aggregates metrics per database instance and calculates amount of resources required for each Azure VM.
   * **Recommended Azure VMs** table contains alternative Azure VM SKUs for your requirements. This table is refreshed every time you click **Refresh Recommendations** button.
+    ![Recommended Virtual Machine SKUs and Network Attached Storage (NAS) options](media/recommendations-vms.png)
   * **Recommended DAS Storage Options for this workload** table is extension to  **Recommended Azure VMs** table and contains alternative Direct Attached Storage (DAS) options using Azure MAnaged Disks per recommended Azure VM SKUs for your requirements. This table is refreshed every time you click **Refresh Recommendations** button and you have to scroll right to see table contents.  
+    ![Recommended managed disk (Direct Attached Storage/DAS) options](media/recommendations-storage.png)
   * **Recommended NAS Storage Options for this workload** table shows Network Attached Storage (NAS) options for the workload.
 * **Settings** page allows you modify parameters to customize the way recommendations are calculated.
+    ![Application settings](media/settings.png)
   * **Est'd Peak CPU factor** Observed vCPU requirements from the AWR reports will be multiplied by this factor to calculate amount of CPU required on Azure. For example, if observed CPU usage requires 10 vCPUs and this factor is 2, required CPU on Azure will be calculated as 20 vCPUs.
   * **Est'd Peak RAM factor** Observed memory requirements from the AWR reports will be multiplied by this factor to calculate amount of memory required on Azure. For example, if observed memory usage is 10GB and this factor is 2, required memory on Azure will be calculated as 20GB.
   * **Est'd Peak I/O factor** Observed I/O requirements (both throughput and IOPS) from the AWR reports will be multiplied by this factor to calculate amount of I/O throughput and IOPS required on Azure. For example, if observed I/O throughput usage is 500MB/sec and this factor is 2, required I/O throughput on Azure will be calculated as 1000MB/sec.
@@ -105,6 +117,7 @@ Options:
 ```powershell
 -h, Help          : Display this screen.
 -SourceFolder     : Source folder that contains AWR reports in HTML format. Default is '.' (current directory).
+-NoAwr            : Creates an empty file so that you can manually enter vCPU, memory and disk requirements and generate recommendations.
 -OutputFile       : Full path of the Excel file that will be created as output. Default is same name as SourceFolder directory name with XLSM extension under SourceFolder directory.
 -TemplateFileName : Excel template that will be used for capacity estimations. Default is '.\template.xlsm'.
 -AzureRegion      : Name of the Azure region to be used when generating Azure resource recommendations. Default is 'westus'.
