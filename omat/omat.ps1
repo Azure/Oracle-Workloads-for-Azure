@@ -1640,6 +1640,8 @@ else {
     Write-Host "Connected to subscription '$($azureAccount.name)' ($($azureAccount.id)) as '$($azureAccount.user.name)'"
 }
 
+$AzureRegion = $AzureRegion.ToLower()
+
 $azureRegionFound=((az account list-locations 2>$null) | ConvertFrom-Json | Where-Object {$_.name -eq $AzureRegion})
 if($null -eq $azureRegionFound)
 {
