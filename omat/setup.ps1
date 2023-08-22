@@ -1,3 +1,7 @@
+#New-Item -ItemType Directory -Force -Path C:\OMAT | Out-Null;Set-Location C:\OMAT;Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser;Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/setup.ps1 -OutFile .\setup.ps1;Unblock-File -Path .\setup.ps1;.\setup.ps1
+#New-Item -ItemType Directory -Force -Path C:\OMAT | Out-Null;Set-Location C:\OMAT;Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope CurrentUser;Invoke-WebRequest -Uri https://raw.githubusercontent.com/onderyildirim/Oracle-Workloads-for-Azure/onderyildirim-omat-tool-update/omat/setup.ps1 -OutFile .\setup.ps1;Unblock-File -Path .\setup.ps1;.\setup.ps1
+
+
 Write-Host "Downloading omat.ps1"
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/Oracle-Workloads-for-Azure/master/omat/omat.ps1 -OutFile .\omat.ps1
 Write-Host "Unblocking omat.ps1"
@@ -23,3 +27,4 @@ else
     Write-Host "Azure CLI found."
     Write-Host (az --version 2>$null)[0]
 }
+
