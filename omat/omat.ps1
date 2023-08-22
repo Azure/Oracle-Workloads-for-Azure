@@ -1181,14 +1181,18 @@ function ExportToExcel(){
             return $obj
         } 
         
+
+        $MaxESeriesVersion=($azureVMSkus | Where-Object Class -eq 'E' | Measure-Object Version -Maximum).Maximum
+        $MaxMSeriesVersion=($azureVMSkus | Where-Object Class -eq 'M' | Measure-Object Version -Maximum).Maximum
+        
         foreach($obj in $azureVMSkus)
         {
             if(($obj.Class -eq 'E') -and 
             ($obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
-                if (($obj.Version -eq 'v5') -or
-                    (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_v5" }).Length -eq 0)))
+                if (($obj.Version -eq $MaxESeriesVersion) -or
+                    (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxESeriesVersion" }).Length -eq 0)))
                 {
                     $obj.vmRecommendationPriority=$global:RecommendationPriority_BestPracticesOnly
                 }
@@ -1197,8 +1201,8 @@ function ExportToExcel(){
             (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
-                if (($obj.Version -eq 'v2') -or
-                    (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_v2" }).Length -eq 0)))
+                if (($obj.Version -eq $MaxMSeriesVersion) -or
+                    (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxMSeriesVersion" }).Length -eq 0)))
                 {
                     $obj.vmRecommendationPriority=$global:RecommendationPriority_BestPracticesOnly
                 }
@@ -1639,6 +1643,8 @@ else {
     $azureAccount = $azureAccountJson | ConvertFrom-Json
     Write-Host "Connected to subscription '$($azureAccount.name)' ($($azureAccount.id)) as '$($azureAccount.user.name)'"
 }
+
+$AzureRegion = $AzureRegion.ToLower()
 
 $azureRegionFound=((az account list-locations 2>$null) | ConvertFrom-Json | Where-Object {$_.name -eq $AzureRegion})
 if($null -eq $azureRegionFound)
