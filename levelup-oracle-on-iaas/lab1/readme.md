@@ -1,1 +1,1 @@
-# Lab1: Capacity Planning
+# Lab 1: Capacity Planning
