@@ -1,1 +1,1 @@
-# Lab 2: Deploy Oracle Landing Zone
+# Lab 2: Deploying Oracle Landing Zone
