@@ -1187,7 +1187,7 @@ function ExportToExcel(){
         
         foreach($obj in $azureVMSkus)
         {
-            if(($obj.Class -eq 'E') -and 
+            if(($obj.Class -eq 'E') -and ($obj.Subclass -ne 'C') -and 
             ($obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
@@ -1233,9 +1233,13 @@ function ExportToExcel(){
             Where-Object {
                 ($_.serviceName -eq 'Virtual Machines') -and #only 'Virtual Machines' i.e. no 'Cloud Services'
                 ($_.type -eq 'Consumption') -and #only 'Consumption' prices i.e not 'DevTestConsumption'
-                ($_.skuName -inotmatch 'Low Priority') -and  #dont consider low priority prices
-                ($_.skuName -inotmatch 'Spot') -and # dont consider spot prices
-                ($_.productName -inotmatch 'Windows') #
+                ($_.skuName.EndsWith('Low Priority') -eq $false) -and  #dont consider low priority prices
+                ($_.skuName.EndsWith('Spot') -eq $false) -and # dont consider spot prices
+                ($_.productName.EndsWith('Cloud Services') -eq $false) -and # dont consider cloud services
+                ($_.productName.StartsWith('Cloud Services') -eq $false) -and # dont consider cloud services
+                ($_.productName.EndsWith('CloudServices') -eq $false) -and # dont consider cloud services
+                ($_.productName.StartsWith('CloudServices') -eq $false) -and # dont consider cloud services
+                ($_.productName.EndsWith('Windows') -eq $false) #
             }
         
         if ($DebugPreference -eq "Continue")
@@ -1305,15 +1309,15 @@ function ExportToExcel(){
 
                 #Some values come as null from Azure RM 
                 #updating those values with specs from https://learn.microsoft.com/en-us/azure/virtual-machines/mv2-series
-                # if (($azureVMSkus[$i].size -like 'M208*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskIOPS') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
-                #     {$rangeValues[$i,$j] = 40000}
-                # elseif (($azureVMSkus[$i].size -like 'M208*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskBytesPerSecond') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
-                #     {$rangeValues[$i,$j] = 1000}
-                # elseif (($azureVMSkus[$i].size -like 'M416*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskIOPS') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
-                #     {$rangeValues[$i,$j] = 80000}
-                # elseif (($azureVMSkus[$i].size -like 'M416*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskBytesPerSecond') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
-                # {$rangeValues[$i,$j] = 2000}
-                # else
+                if (($azureVMSkus[$i].size -like 'M208*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskIOPS') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
+                    {$rangeValues[$i,$j] = 40000}
+                elseif (($azureVMSkus[$i].size -like 'M208*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskBytesPerSecond') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
+                    {$rangeValues[$i,$j] = 1000000000}
+                elseif (($azureVMSkus[$i].size -like 'M416*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskIOPS') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
+                    {$rangeValues[$i,$j] = 80000}
+                elseif (($azureVMSkus[$i].size -like 'M416*') -and ($vmSkuProperties[$j].Name -eq 'UncachedDiskBytesPerSecond') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
+                    {$rangeValues[$i,$j] = 2000000000}
+                
                 if (($vmSkuProperties[$j].Name -eq 'vCPUsAvailable') -and ([string]::IsNullOrEmpty($azureVMSkus[$i]."$($vmSkuProperties[$j].Name)")))
                 {$rangeValues[$i,$j] = $azureVMSkus[$i].vCpus}
             }
