@@ -2,9 +2,6 @@
 
 ## Getting started
 
-- Fork this repo to your own GitHub organization, you should not create a direct clone of the repo. Pull requests based off direct clones of the repo will not be allowed.
-- Clone the repo from your own GitHub organization to your developer workstation.
-- Review your current configuration to determine what scenario applies to you. We have guidance that will help deploy Oracle VMs in your subscription.
 
 
 Follow the steps given below:
