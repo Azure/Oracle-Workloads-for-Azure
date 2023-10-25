@@ -1,0 +1,9 @@
+---
+- hosts: all
+  gather_facts: true
+  become: true
+  roles:
+  - common
+  #- grid
+  - oracle19c  #oracle software installatio
+  - dbca       # database creation
