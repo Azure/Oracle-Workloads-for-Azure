@@ -1,0 +1,59 @@
+---
+oracle_db_home: /u01/app/oracle/product/19.3.0/dbhome_1
+oracle_user: oracle
+createAsContainerDatabase: "FALSE"
+gdbName: orcl
+sid: orcl
+databaseConfigType:
+RACOneNodeServiceName:
+policyManaged:
+createServerPool:
+serverPoolName:
+cardinality:
+force:
+pqPoolName:
+pqCardinality:
+numberOfPDBs:
+pdbName:
+useLocalUndoForPDBs:
+pdbAdminPassword:
+nodelist:
+templateName: General_Purpose.dbc
+sysPassword: Oracle123.?
+systemPassword: Oracle123.?
+oracleHomeUserPassword:
+emConfiguration: DBEXPRESS
+emExpressPort: 5500
+runCVUChecks:
+dbsnmpPassword: Oracle123.?
+omsHost:
+omsPort:
+emUser:
+emPassword:
+dvConfiguration:
+dvUserName:
+dvUserPassword:
+dvAccountManagerName:
+dvAccountManagerPassword:
+olsConfiguration:
+datafileJarLocation:
+datafileDestination:
+recoveryAreaDestination:
+storageType: FS
+diskGroupName: #DATA
+asmsnmpPassword:
+recoveryGroupName: #ASM #RECO degistir
+characterSet: AL32UTF8
+nationalCharacterSet: UTF8
+registerWithDirService:
+dirServiceUserName:
+dirServicePassword:
+walletPassword:
+listeners:
+variablesFile:
+initParams:
+sampleSchema: "TRUE"
+memoryPercentage:
+databaseType: MULTIPURPOSE
+automaticMemoryManagement: "FALSE"
+totalMemory:

@@ -1,0 +1,24 @@
+# primary oracle group
+oracle_group: oinstall
+
+# DBA group
+oracle_dba_group: dba
+oracle_backupdba_group: backupdba
+oracle_oper_group: oper
+oracle_dgdba_group: dgdba
+oracle_kmdba_group: kmdba
+oracle_racdba_group: racdba
+
+oracle_groups: wheel,dba,backupdba,oper,dgdba,kmdba,racdba
+
+oracle_user: oracle
+oracle_pass: $1$salt$6hY7SFGTovD5BRJ.4zYAd1
+
+swapsize: 16384
+
+#storage type, FS|ASM
+storage_type: FS
+
+
+data_device: /dev/disk/azure/scsi1/lun20
+data_disk_mount: /u01

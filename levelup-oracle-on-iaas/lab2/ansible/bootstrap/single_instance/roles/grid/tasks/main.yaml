@@ -1,0 +1,314 @@
+- block:
+  - name: Download AsmLib
+    get_url:
+      url: https://download.oracle.com/otn_software/asmlib/oracleasmlib-2.0.12-1.el6.x86_64.rpm  
+      dest: /tmp/oracleasmlib-2.0.12-1.el6.x86_64.rpm
+
+  - name: Install packages
+    yum:
+      name: "{{ item.pak }}"
+      state: latest
+    become_user: root
+    loop:
+      - { pak: kmod-oracleasm.x86_64 }
+      - { pak: oracleasm-support.x86_64 }
+      - { pak: /tmp/oracleasmlib-2.0.12-1.el6.x86_64.rpm }
+      - { pak: glibc-devel-2.17-326.0.9.el7_9.x86_64 }
+
+
+
+  - name: Create Groups
+    group:
+      name: "{{ item.group }}"
+      state: present
+    become_user: root
+    loop:
+      - { group: asmadmin }
+      - { group: asmdba }
+      - { group: asmoper }
+
+  - name: Add Grid Install User
+    user:
+      name: grid
+      group: oinstall
+      groups: dba,asmadmin,asmdba,asmoper,racdba
+      append: yes
+  
+  - name: Add Oracle Install User
+    user:
+      name: oracle
+      group: oinstall
+      groups: asmadmin,asmdba,asmoper
+      append: yes
+
+  - name: Create grid user directory
+    file:
+      path: /u01/app/grid
+      state: directory
+      owner: grid
+  
+  - name: Setup Oracle ASM Library driver
+    shell: /usr/sbin/oracleasm configure -u grid -g asmadmin -e -s y 
+    become_user: root
+
+  - name: Initialize ASM
+    shell: /usr/sbin/oracleasm init
+    become_user: root
+
+  - name: Get All Disks
+    shell: "cd /dev/disk/azure/scsi1 ; lunpath=`ls /dev/disk/azure/scsi1 | grep -e lun[1,2,3,4,5,6][0-9]$` ; readlink -f ${lunpath}"
+    become_user: root
+    register: all_disks
+    
+  - name: Partition Disks
+    parted:
+      device: "{{ item }}"
+      number: 1
+      state: present
+    become_user: root 
+    loop: "{{ all_disks.stdout_lines|flatten(levels=1) }}"
+
+#TODO: Currently ASM can create 10 luns Data can create 40 Luns and Redo can create 10.  If additional luns are needed these need to be modified.
+  - name: Get ASM Disks
+    shell: "cd /dev/disk/azure/scsi1 ; lunpath=`ls /dev/disk/azure/scsi1 | grep -e lun[1][0-9]$` ; readlink -f ${lunpath}"
+    become_user: root
+    register: asm_disks
+  - name: Get Data Disks
+    shell: "cd /dev/disk/azure/scsi1 ; lunpath=`ls /dev/disk/azure/scsi1 | grep -e lun[2,3,4,5][0-9]$` ; readlink -f ${lunpath}"
+    become_user: root
+    register: data_disks
+  - name: Get Redo Disks
+    shell: "cd /dev/disk/azure/scsi1 ; lunpath=`ls /dev/disk/azure/scsi1 | grep -e lun[6][0-9]$` ; readlink -f ${lunpath}"
+    become_user: root
+    register: redo_disks
+
+  - name: Create data disks
+    shell:  "test=$(oracleasm querydisk DATA{{ my_idx }} | grep does | wc -l) ; if [[ $test == 1 ]]; then oracleasm createdisk DATA{{ my_idx }} {{ item }}1;fi"
+    become_user: root
+    loop: "{{ data_disks.stdout_lines|flatten(levels=1) }}"
+    loop_control:
+      index_var : my_idx
+
+  - name: Create Redo disks
+    shell:  "test=$(oracleasm querydisk REDO{{ my_idx }} | grep does | wc -l) ; if [[ $test == 1 ]]; then oracleasm createdisk REDO{{ my_idx }} {{ item }}1;fi"
+    become_user: root
+    loop: "{{ redo_disks.stdout_lines|flatten(levels=1) }}"
+    loop_control:
+      index_var : my_idx
+
+  - name: Create Asm disks
+    shell:  "test=$(oracleasm querydisk ASM{{ my_idx }} | grep does | wc -l) ; if [[ $test == 1 ]]; then oracleasm createdisk ASM{{ my_idx }} {{ item }}1;fi"
+    become_user: root
+    loop: "{{ asm_disks.stdout_lines|flatten(levels=1) }}"
+    loop_control:
+      index_var : my_idx
+
+  - name: Change Ownership of /opt
+    file:
+      path: /opt
+      owner: grid
+      group: oinstall
+      mode: 0775
+
+  - name: Change Owner on Disks
+    file:
+      path: "{{ item }}"
+      owner: oracle
+      group: oinstall
+      mode: 0600
+    loop: "{{ all_disks.stdout_lines }}"
+  
+  #Hack: Workaround not having Grid in the Image. Must download first see Readme.
+  - name: Download Grid
+    get_url:
+      url: "{{ gridurl }}"
+      dest: /opt/LINUX.X64_193000_grid_home.zip
+
+ # - name: Download Grid Latest Update
+ #   get_url:
+ #     url: "{{ gridLatestUpdateUrl }}"
+ #     dest: /opt/patch_linux_grid_home.zip
+
+  #- name: Download OPatch Latest Version
+  #  get_url:
+  #    url: "{{ opatchUpdateUrl }}"
+  #    dest: /opt/opatch.zip
+
+  #- name: Change Ownership of Grid Patch File
+  #  file:
+  #    path: /opt/patch_linux_grid_home.zip
+  #    owner: grid
+  #    group: oinstall
+
+  - name: Change Ownership of Grid File
+    file:
+      path: /opt/LINUX.X64_193000_grid_home.zip
+      owner: grid
+      group: oinstall
+  #- name: Change Ownership of OPatch  File
+  #  file:
+  #    path: /opt/opatch.zip
+  #    owner: grid
+  #    group: oinstall
+
+  - name: Create grid directory
+    file:
+      path: /opt/grid
+      state: directory
+      owner: grid
+      group: oinstall
+
+  #- name: Create grid patch directory
+  #  file:
+  #    path: /opt/grid/patch
+  #    state: directory
+  #    owner: grid
+  #    group: oinstall
+
+  - name: Extract Grid to /opt
+    ansible.builtin.unarchive:
+      src: /opt/LINUX.X64_193000_grid_home.zip
+      dest: /opt/grid
+      remote_src: yes
+      owner: grid
+      group: oinstall
+
+  #- name: Delete OPatch
+  #  ansible.builtin.file:
+  #    state: absent
+  #    path: /opt/grid/OPatch
+
+  #- name: Create grid OPatch directory
+  #  file:
+  #    path: /opt/grid/OPatch
+  #    state: directory
+  #    owner: grid
+  #    group: oinstall
+
+
+ # - name: Extract Grid OPatch to /opt/grid/OPatch
+ #   ansible.builtin.unarchive:
+ #     src: /opt/opatch.zip
+ #     dest: /opt/grid/
+ #     remote_src: yes
+ #     owner: grid
+ #     group: oinstall
+
+  #- name: Extract Grid Patch to /opt/grid/patch
+  #  ansible.builtin.unarchive:
+  #    src: /opt/patch_linux_grid_home.zip
+  #    dest: /opt/grid/patch
+  #    remote_src: yes
+  #    owner: grid
+  #    group: oinstall
+
+
+  - name: Change Ownership of Grid Folder
+    file:
+      path: /opt/grid
+      owner: grid
+      group: oinstall
+  
+  - name: Change Ownership of oracleasm
+    file:
+      path: /dev/oracleasm
+      owner: grid
+      group: oinstall
+
+ 
+  - name: Copy Grid Response File
+    ansible.builtin.template:
+      src: gridsetup.rsp.j2
+      dest: /opt/grid/gridsetup.rsp
+      owner: grid
+      group: oinstall
+      mode: 0700
+
+    #TODO: Password recheck
+  - name: Change SysAsmPassword in Grid Response File
+    replace:
+      path: /opt/grid/gridsetup.rsp
+      regexp: "TEMPSYSASMPASS"
+      replace: "{{ syspass }}"
+
+
+
+  - name: Create Ansible Temp file oracle
+    file:
+      path: /home/oracle/.ansible/tmp
+      state: directory
+      owner: oracle
+      mode: 0755
+  
+  - name: Create Ansible Temp file grid
+    file:
+      path: /home/grid/.ansible/tmp
+      state: directory
+      owner: grid
+      mode: 0755
+  
+ # - name: Delete Grid Zip File
+ #   file:
+ #     state: absent
+ #     path: /opt/LINUX.X64_193000_grid_home.zip
+  
+    #Can only be executed once need to check if exists
+    #https://dev.to/koh_sh/how-to-do-if-a-package-is-installed-do-something-with-ansible-3fhi
+  - name: check if cvuqdisk is installed
+    shell: rpm -qa | grep cvuqdisk
+    register: cvuqdisk_installed
+    ignore_errors: True
+    check_mode: False
+    changed_when: False
+
+    #cvuqdisk is installed  when  cvuqdisk_installed == 0
+  - name: Install cvuqdisk Package
+    shell: rpm -iv /opt/grid/cv/rpm/cvuqdisk-1.0.10-1.rpm
+    become_user: root
+    when: cvuqdisk_installed.rc != 0
+
+
+  - name: change grid user's password
+    shell: echo -e "{{ gridpass }}\n{{ gridpass }}" |(passwd --stdin grid) 
+    become_user: root
+  - name: change oracle user's password
+    shell: echo -e "{{ oraclepass }}\n{{ oraclepass }}" |(passwd --stdin oracle) 
+    become_user: root
+ # - name: change root user's password
+ #   shell: echo -e "{{ rootpass }}\n{{ rootpass }}" |(passwd --stdin root) 
+ #   become_user: root
+
+#TODO: Everything below can only be executed once need to check if exists or comment out if running again 
+#TODO:  Even though you can create multiple ASM Disks, current configuration will only Create the Pool on the first disk
+
+ # - name: PreCheck Grid Infrastructure
+ #   shell: /opt/grid/gridSetup.sh -silent -executePrereqs -responseFile /opt/grid/gridsetup.rsp
+ #   become_user: grid
+ #   ignore_errors: no
+
+  - name: Install Grid Infrastructure
+    shell: /opt/grid/gridSetup.sh -silent -responseFile /opt/grid/gridsetup.rsp #-applyRU /opt/grid/patch/{{ oracle_patch_number }}
+    become_user: grid
+    ignore_errors: yes
+
+  - name: Execute Root.sh Script as to configure
+    shell: /opt/grid/root.sh
+    become_user: root
+    ignore_errors: yes
+
+  - name: Execute orainsit Script as to configure
+    shell: /u01/app/oraInventory/orainstRoot.sh
+    become_user: root
+    ignore_errors: yes
+
+  - name: Execute Configuration Grid Script
+    shell: /opt/grid/gridSetup.sh -executeConfigTools -responseFile /opt/grid/gridsetup.rsp -silent
+    become_user: grid
+
+  - name: Create Data Disk Group
+    shell: /opt/grid/bin/asmca -silent -createDiskGroup  -diskGroupName DATA  -disk '/dev/oracleasm/disks/DATA*'  -redundancy EXTERNAL  -au_size 4  -compatible.asm '19.0.0.0.0' -compatible.rdbms '12.1.0.0.0'
+    become_user: grid
+  
+  - name: Create Redo Disk Group
+    shell: /opt/grid/bin/asmca -silent -createDiskGroup  -diskGroupName REDO  -disk '/dev/oracleasm/disks/REDO*'  -redundancy EXTERNAL  -au_size 4  -compatible.asm '19.0.0.0.0' -compatible.rdbms '12.1.0.0.0'
+    become_user: grid
