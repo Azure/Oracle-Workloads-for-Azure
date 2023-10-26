@@ -3,17 +3,17 @@
 
 1. From the compute source (or Azure Cloud Shell), ssh into the Azure VM:
 ```
-$ ssh -i ~/.ssh/lza-oracle-single-instance  oracle@<PUBLIC_IP_ADDRESS>
+ssh -i ~/.ssh/lza-oracle-single-instance  oracle@<PUBLIC_IP_ADDRESS>
 ```
 
 2. Check the Oracle related environment variables:
 ```
-$ env | grep -i oracle
+env | grep -i oracle
 ```
 
 3. Connect to the database:
 ```
-$ sqlplus / as sysdba
+sqlplus / as sysdba
 SQL> show user
 ```
 

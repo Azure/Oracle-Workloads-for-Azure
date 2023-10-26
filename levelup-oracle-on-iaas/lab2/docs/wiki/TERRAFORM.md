@@ -18,9 +18,10 @@ Before using this module, you have to create your own ssh key to deploy and conn
 1. Do the following on the compute source:
 
 ```bash
-$ ssh-keygen -f ~/.ssh/lza-oracle-single-instance
+ssh-keygen -f ~/.ssh/lza-oracle-single-instance
 
-$ ls -lha ~/.ssh/
+ls -lha ~/.ssh/
+
 -rw-------   1 yourname  staff   2.6K  8 17  2023 lza-oracle-single-instance
 -rw-r--r--   1 yourname  staff   589B  8 17  2023 lza-oracle-single-instance.pub
 ```
@@ -29,14 +30,14 @@ $ ls -lha ~/.ssh/
 
 
 ```bash
-$ cd ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/terraform/bootstrap/single_instance
-$ cat ~/.ssh/lza-oracle-single-instance.pub > fixtures.tfvars
+cd ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/terraform/bootstrap/single_instance
+cat ~/.ssh/lza-oracle-single-instance.pub > fixtures.tfvars
 ```
 
 3. Edit the file and modify it so that the format matches the following. Make sure to include the double quotes. 
 
 ```bash
-$ nano  ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/terraform/bootstrap/single_instance/fixtures.tfvars
+nano  ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/terraform/bootstrap/single_instance/fixtures.tfvars
 ```
 
 Here is a sample `fixtures.tfvars` file.
@@ -51,14 +52,15 @@ ssh_key = "ssh-rsa xxxxxxxxxxxxxx="
 4. Next, execute below Terraform commands. When you deploy resources to Azure, you have to indicate `fixtures.tfvars` as a variable file, which contains the ssh public key.
 
 ```
-$ pwd
+pwd
+
 ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/terraform/bootstrap/single_instance
 
-$ terraform init
+terraform init
 
-$ terraform plan -var-file=fixtures.tfvars
+terraform plan -var-file=fixtures.tfvars
 
-$ terraform apply -var-file=fixtures.tfvars
+terraform apply -var-file=fixtures.tfvars
 ```
 
 (When prompted for "Enter a value:" , type in "yes" and press Enter)
@@ -71,7 +73,7 @@ $ terraform apply -var-file=fixtures.tfvars
 5. (OPTIONAL) Finally, you can connect to the virtual machine with ssh private key. While deploying resources, a public ip address is generated and attached to the virtual machine, so that you can connect to the virtual machine with this IP address. The username is `oracle`, which is fixed in `terraform/bootstrap/single_instance/module.tf`.
 
 ```
-$ ssh -i ~/.ssh/lza-oracle-single-instance  oracle@<PUBLIC_IP_ADDRESS>
+ssh -i ~/.ssh/lza-oracle-single-instance  oracle@<PUBLIC_IP_ADDRESS>
 ```
 
 6. Now you can go back to the main [README.md](../../README.md#step-by-step-instructions) file.
