@@ -8,15 +8,22 @@ On the compute source running Ubuntu or on Azure Cloud Shell, follow the steps g
 
 1. Switch to the following subdirectory:
 ```
- $ cd ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/ansible/bootstrap/single_instance
+cd ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/ansible/bootstrap/single_instance
 ```
 
 2. Create a new file called inventory:
 ```
- $ touch inventory
+touch inventory
 ```
 
-3. Edit the file so that it has the following format:
+3. Edit the file 
+
+```
+nano inventory
+```
+
+
+Make sure that it has the following format:
 
 ```
 [dbservers]
@@ -31,7 +38,7 @@ Below is an example:
 
 4. Start the ansible playbook
 ```
-$ ansible-playbook playbook.yml -i inventory
+ansible-playbook playbook.yml -i inventory
 ```
 (If you are prompted for "are you sure you want to continue connecting?", enter "yes")
 
@@ -40,7 +47,7 @@ $ ansible-playbook playbook.yml -i inventory
 
 5. If you get an error stating "ERROR! Invalid callback for stdout specified: community.general.yaml" then run the following step and then re-run the previous step.
 ```
- $ ansible-galaxy collection install community.general
+ ansible-galaxy collection install community.general
 ```
 
 6. It is acceptable to see warnings highlighted in red.

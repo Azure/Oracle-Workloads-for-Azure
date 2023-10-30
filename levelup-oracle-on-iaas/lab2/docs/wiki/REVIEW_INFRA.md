@@ -17,9 +17,14 @@ rg-oracle-demo-eastus-001
 <img src="../media/sshport.jpg" />
 
 
-If you are using Azure Cloud Shell, you must create an inbound rule as the following:
+<br>
+If you are using Azure Cloud Shell, you can create an inbound NSG rule as the following:
 
 <img src="../media/ssh-for-cloud-shell.jpg" />
+
+<br>
+
+You can also choose to [enable Just-in-Time access for the VM](https://learn.microsoft.com/en-us/azure/defender-for-cloud/just-in-time-access-usage) 
 
 4. Copy the public IP address of the VM to use in the future steps. An example is given below.
 
