@@ -16,7 +16,14 @@ cd ~/projects/Oracle-Workloads-for-Azure/levelup-oracle-on-iaas/lab2/ansible/boo
 touch inventory
 ```
 
-3. Edit the file so that it has the following format:
+3. Edit the file 
+
+```
+nano inventory
+```
+
+
+Make sure that it has the following format:
 
 ```
 [dbservers]

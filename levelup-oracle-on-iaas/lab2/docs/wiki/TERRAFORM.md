@@ -63,9 +63,13 @@ terraform plan -var-file=fixtures.tfvars
 terraform apply -var-file=fixtures.tfvars
 ```
 
-(When prompted for "Enter a value:" , type in "yes" and press Enter)
+(The "terraform plan" command should only take about 1-2 mins to run. If it takes any longer, interrupt the script and re-run).
 
-(The "terraform plan" section should only take about 1-2 mins to run. If it takes any longer, interrupt the script and re-run).
+
+
+(The "terraform apply" command will run for about 8-12 minutes.)
+
+(When prompted for "Enter a value:" , type in "yes" and press Enter)
 
 (If using Azure Cloud Shell, remember to refresh your browser by scrolling up or down, every 15 minutes or so since the shell times out after 20 minutes of inaction.)
 
