@@ -41,11 +41,15 @@ This template deploys the following resources:
 
 ## How to deploy the template 
 
-- Clone this repo git clone https://github.com/Azure/Oracle-Workloads-for-Azure.git 
+- Clone this repo
+
+```powershell
+git clone https://github.com/Azure/Oracle-Workloads-for-Azure.git 
+```
 
 - Modify the main.bicepparam file, with admin username for the Oracle VM, and the ssh public key. The public key should be in ~/.ssh/id_rsa.pub by default.
 
-- If you need to customize the VM size, add a parameter for VMsize in main.bicepparam. example:
+- If the VM size needs to be customized, add a parameter for VMsize in main.bicepparam. example:
 
 ```powershell
 param vmSize = 'Standard_D4ds_v4'
@@ -53,7 +57,7 @@ param vmSize = 'Standard_D4ds_v4'
 
 - Login to Azure CLI (if not in Cloud shell)
 
-- Deploy a resource group in your preferred region. 
+- Deploy a resource group in your preferred region, where quota is available 
 
 ```powershell
  az group create --resource-group oragroup --location centralindia
@@ -65,11 +69,12 @@ param vmSize = 'Standard_D4ds_v4'
  az deployment group create --resource-group oragroup --template-file main.bicep --parameters main.bicepparam
 ```
 
-- Deployment progress can be viewed in Azure Portal. (Portal -> Resource group -> Deployments). Custom script logs are written in each VM by default  to the directory:  /var/lib/waagent/custom-script/download/0/ 
+- Deployment progress can be viewed in Azure Portal. (Portal -> Resource group -> Deployments). Custom script logs are written in each VM by default  to the directory:  /var/lib/waagent/custom-script/download/0/ . The complete deployment should take about ~20 mins.
 
 ## How to verify the deployment 
 
-- Login to the Observer node, using ssh. Please note that if JIT policy is enabled on your VM automatically, you have to Request access before running ssh.
+- Verify if template deployment is fully successful, without any errors.
+- Login to the Observer node, using ssh. Please note that if JIT policy is enabled on your VM automatically, you have to Request access before running ssh. 
 
 ```powershell
 ssh <adminusername>@<observeripaddress>
