@@ -190,6 +190,7 @@ alt="A screenshot of a computer Description automatically generated" />
 <!-- -->
 
     sudo mkdir -p /mnt/orabackup
+    sudo chown oracle:oinstall /mnt/orabackup
 
 3.  Run the commands to mount the Azure file share by using the SMB
     protocol, substitute `<Your Storage Account Name>` and
@@ -198,7 +199,7 @@ alt="A screenshot of a computer Description automatically generated" />
 
 <!-- -->
 
-    sudo mount -t nfs <storage account name>.file.core.windows.net:/<storage account name>/<NFS File share name> /mnt/orabackup -o vers=4,minorversion=1,sec=sys, erverino,cache=none,uid=oracle,gid=oinstall,dir_mode=0777,file_mode=0777
+    sudo mount -t nfs <storage account name>.file.core.windows.net:/<storage account name>/<NFS File share name> /mnt/orabackup -o vers=4,minorversion=1,sec=sys
 
 4.  Add the mount to the /etc/fstab file:, substitute
     `<Your Storage Account Name``>` and `<File share name>` with the
@@ -206,7 +207,7 @@ alt="A screenshot of a computer Description automatically generated" />
 
 <!-- -->
 
-    sudo bash -c ‘echo <storage account name>.file.core.windows.net:/<storage account name>/<File share name> /mnt/orabackup nfs -o vers=4,minorversion=1,sec=sys, erverino,cache=none,uid=oracle,gid=oinstall,dir_mode=0777,file_mode=0777 0 0
+    sudo bash -c ‘echo <storage account name>.file.core.windows.net:/<storage account name>/<File share name> /mnt/orabackup nfs -o vers=4,minorversion=1,sec=sys 0 0
 
 5.  Check that the file share is mounted properly by using the following
     command:
@@ -288,14 +289,14 @@ point name and database SID.
 
 <!-- -->
 
-    SQL> startup
+    startup
 
 6.  Set the first archive log destination of the database to the
     file-share directory that you created earlier:
 
 <!-- -->
 
-    SQL> alter system set log_archive_dest_1='LOCATION=/mnt/orabackup' scope=both;
+    alter system set log_archive_dest_1='LOCATION=/mnt/orabackup' scope=both;
 
 7.  Define the recovery point objective (RPO) for the database.
 
@@ -326,7 +327,7 @@ operation can recover to within 5 minutes of the time of failure.
 
 To set `ARCHIVE_LAG_TARGET`, run this command:
 
-    SQL> alter system set archive_lag_target=300 scope=both;
+    alter system set archive_lag_target=300 scope=both;
 
 To better understand how to deploy highly available Oracle Database
 instances in Azure with zero RPO, see [Reference architectures for
@@ -338,39 +339,39 @@ Database](https://learn.microsoft.com/en-us/azure/virtual-machines/workloads/ora
 
 Check the log archive status first:
 
-    SQL> SELECT log_mode FROM v$database;
+    SELECT log_mode FROM v$database;
     LOG_MODE
     ------------
     NOARCHIVELOG
 
 If it's in `NOARCHIVELOG` mode, run the following commands:
 
-    SQL> SHUTDOWN IMMEDIATE;
-    SQL> STARTUP MOUNT;
-    SQL> ALTER DATABASE ARCHIVELOG;
-    SQL> ALTER DATABASE OPEN;
-    SQL> ALTER SYSTEM SWITCH LOGFILE;
+    SHUTDOWN IMMEDIATE;
+    STARTUP MOUNT;
+    ALTER DATABASE ARCHIVELOG;
+    ALTER DATABASE OPEN;
+    ALTER SYSTEM SWITCH LOGFILE;
 
 9.  Create a table to test the backup and restore operations:
 
 <!-- -->
 
-    SQL> create user scott identified by tiger quota 100M on users;
-    SQL> grant create session, create table to scott;
-    SQL> connect scott/tiger
-    SQL> create table scott_table(col1 number, col2 varchar2(50));
-    SQL> insert into scott_table VALUES(1,'Line 1');
-    SQL> commit;
-    SQL> quit
+    create user scott identified by tiger quota 100M on users;
+    grant create session, create table to scott;
+    connect scott/tiger
+    create table scott_table(col1 number, col2 varchar2(50));
+    insert into scott_table VALUES(1,'Line 1');
+    commit;
+    quit
 
 10. Force Archive redo log to make sure online redo logs are archived to
     the NFS file share
 
 <!-- -->
 
-    SQL> sqlplus / as sysdba
-    SQL> ALTER SYSTEM  SWITCH LOGFILE;
-    SQL> quit
+    sqlplus / as sysdba
+    ALTER SYSTEM  SWITCH LOGFILE;
+    quit
 
 11. Return to bash and check if there are files created in NFS mount
     point
@@ -566,8 +567,8 @@ Perform the following steps for each database installed on the VM:
 <!-- -->
 
     sqlplus / as sysdba
-    SQL> show parameter os_authent_prefix
-    SQL> show parameter remote_os_authent
+    show parameter os_authent_prefix
+    show parameter remote_os_authent
 
 The output should look like this example, which shows ops\$ as the
 database username prefix:
@@ -582,8 +583,8 @@ database username prefix:
 
 <!-- -->
 
-    SQL> CREATE USER ops$azbackup IDENTIFIED EXTERNALLY;
-    SQL> GRANT CREATE SESSION, ALTER SESSION, SYSBACKUP TO ops$azbackup;
+    CREATE USER ops$azbackup IDENTIFIED EXTERNALLY;
+    GRANT CREATE SESSION, ALTER SESSION, SYSBACKUP TO ops$azbackup;
 
 7.  If you receive the error ORA-46953: The password file is not in the
     12.2 format when you run the GRANT statement, follow these steps to
@@ -617,8 +618,8 @@ database username prefix:
 <!-- -->
 
     sqlplus / as sysdba
-    SQL> GRANT EXECUTE ON DBMS_SYSTEM TO SYSBACKUP;
-    SQL> CREATE PROCEDURE sysbackup.azmessage(in_msg IN VARCHAR2)
+    GRANT EXECUTE ON DBMS_SYSTEM TO SYSBACKUP;
+    CREATE PROCEDURE sysbackup.azmessage(in_msg IN VARCHAR2)
     AS
       v_timestamp     VARCHAR2(32);
     BEGIN
@@ -628,8 +629,8 @@ database username prefix:
       SYS.DBMS_SYSTEM.KSDWRT(SYS.DBMS_SYSTEM.ALERT_FILE, in_msg);
     END azmessage;
     /
-    SQL> SHOW ERRORS
-    SQL> QUIT
+    SHOW ERRORS
+    QUIT
 
 ### Set up application-consistent backups
 
@@ -846,8 +847,8 @@ databases on the VM by performing the following steps on each database.
 
     sudo su - oracle
     sqlplus / as sysdba
-    SQL> shutdown immediate
-    SQL> startup mount
+    shutdown immediate
+    startup mount
 
 4.  Perform database recovery.
 
@@ -862,14 +863,14 @@ the snapshot. There might be transactions recorded after this point, and
 you want to recover to the point of the last transaction committed to
 the database.
 
-    SQL> recover automatic database using backup controlfile until cancel;
+    recover automatic database using backup controlfile until cancel;
 
 5.  When the last available archive log file has been applied,
     enter `CANCEL` to end recovery.
 
 <!-- -->
 
-    SQL> recover automatic database until cancel using backup controlfile;
+    recover automatic database until cancel using backup controlfile;
     ORA-00279: change 2172930 generated at 04/08/2021 12:27:06 needed for thread 1
     ORA-00289: suggestion :
     /u02/fast_recovery_area/ORATEST1/archivelog/2021_04_08/o1_mf_1_13_%u_.arc
@@ -893,13 +894,13 @@ incarnation of the database by resetting the redo history back to the
 beginning, because there's no way to determine how much of the previous
 database incarnation was skipped in the recovery.
 
-    SQL> alter database open resetlogs;
+    alter database open resetlogs;
 
 7.  Check that the database content was recovered:
 
 <!-- -->
 
-    SQL> select * from scott.scott_table;
+    select * from scott.scott_table;
 
 The backup and recovery of Oracle Database on an Azure Linux VM are now
 finished.
