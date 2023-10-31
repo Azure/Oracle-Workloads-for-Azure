@@ -198,7 +198,7 @@ alt="A screenshot of a computer Description automatically generated" />
 
 <!-- -->
 
-    sudo mount -t nfs <storage account name>.file.core.windows.net:/<storage account name>/<NFS File share name> /mnt/orabackup -o vers=4,minorversion=1,sec=sys, erverino,cache=none,uid=oracle,gid=oinstall,dir_mode=0777,file_mode=0777
+    sudo mount -t nfs <storage account name>.file.core.windows.net:/<storage account name>/<NFS File share name> /mnt/orabackup -o vers=4,minorversion=1,sec=sys,uid=oracle,gid=oinstall,dir_mode=0777,file_mode=0777
 
 4.  Add the mount to the /etc/fstab file:, substitute
     `<Your Storage Account Name``>` and `<File share name>` with the
@@ -206,7 +206,7 @@ alt="A screenshot of a computer Description automatically generated" />
 
 <!-- -->
 
-    sudo bash -c ‘echo <storage account name>.file.core.windows.net:/<storage account name>/<File share name> /mnt/orabackup nfs -o vers=4,minorversion=1,sec=sys, erverino,cache=none,uid=oracle,gid=oinstall,dir_mode=0777,file_mode=0777 0 0
+    sudo bash -c ‘echo <storage account name>.file.core.windows.net:/<storage account name>/<File share name> /mnt/orabackup nfs -o vers=4,minorversion=1,sec=sys,uid=oracle,gid=oinstall,dir_mode=0777,file_mode=0777 0 0
 
 5.  Check that the file share is mounted properly by using the following
     command:
