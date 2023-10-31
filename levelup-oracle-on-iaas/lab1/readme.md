@@ -17,7 +17,7 @@ OMAT essentially automates steps defined in the AWR sizing document to speed up 
 ### Clone Lab Repository
 - Clone the repository to your local machine or download the zip file and extract it to a local folder.
 ```powershell
-git clone https://github.com/Azure/Oracle-Workloads-for-Azure.git <YOUR_LOCAL_FOLDER>
+git clone https://github.com/Azure/Oracle-Workloads-for-Azure.git
 ```
 ### Configure OMAT
 - Run PowerShell in Administrator mode.
@@ -135,7 +135,7 @@ Once you created the Excel file, you can work with the file offline to generate 
 
 ![Summary by Azure VM](./media/omat_summary_by_azurevm_1.png "Summary by Azure VM")
 
-  This table basically shows that we are moving all databases to a single VM on Azure and that VM and storage has to provide a total capacity of 3858GB RAM, 37831 IOPS, 4636 MB/s IO throguhput and 371 vCPUs.
+  This table basically shows that we are moving all databases to a single VM on Azure and that VM and storage has to provide a total capacity of 3858GB RAM, 37831 IOPS, 4636 MB/s IO throughput and 371 vCPUs.
 
 - Next table shows the recommended VMs for above requirements. Since, vCPU requirement is high, there is really only one option that can provide >371 vCPUs.
 
@@ -145,7 +145,7 @@ Once you created the Excel file, you can work with the file offline to generate 
 
 ![Recommended VMs](./media/omat_recommended_vms_1.png "Recommended VMs")
 
-- For storage only available option is the network based storage options (e.g. ANF or ESAN). Note that we do not have a VM SKU that can sustain >4.5 MB/sec throughput.
+- For storage options, the recommendations are network-based storage options, e.g., Azure NetApp Files (ANF) or Azure Elastic SAN (Preview). Although these storage options can support the databases' combined IO throughput of 4,636 MB/s, none of the recommended Mv2-series VMs could sustain the required IO throughput over its network bandwidth. Refer to the [Mv2-series features](https://learn.microsoft.com/en-us/azure/virtual-machines/mv2-series). The column to focus on is "Expected network bandwidth (Mbps)" because network-based storage utilizes network bandwidth. Each of the recommended Mv2-series VMs only support expected network bandwidth of 32,000 Mbps or 4,000MB/s. The VM would be throttled if the actual network bandwidth exceeds the published network bandwidth limit and the consequence of throttling is very severe to the database workload.
 
 ![Recommended NAS Storage](./media/omat_recommended_nas_1.png "Recommended NAS Storage")
 
@@ -196,9 +196,13 @@ Once you created the Excel file, you can work with the file offline to generate 
   - Ultra SSD
   - Premium v1 SSD (Note that it calculates all alternatives for Premium v1 disk SKUs and presents here the least expensive option)
 
-- Now compare two recommendations for Server3 on lines 32 (name = Standard_M192is_v2) and 33 (name = Standard_M208ms_v2). Why do you think there are no managed disk recommendations for line 33?
+> [!Important]
+> 
+>  It is a best practice to use multiple data disks and stripe them together to get a combined higher IOPS and throughput limit. This is done by [striping the data disks](https://learn.microsoft.com/en-us/azure/virtual-machines/premium-storage-performance#disk-striping) together to aggregate their IOPs, throughput and storage capacity. There are 2 striping techniques usually used for Oracle databases. Oracle database administrators and practitioners are very familiar with Oracle Automatic Storage Management (ASM). See this [article](https://learn.microsoft.com/en-us/azure/virtual-machines/workloads/oracle/configure-oracle-asm) for more details. Besides Oracle ASM, customers who are familiar with LVM on Linux, they could [configure LVM](https://learn.microsoft.com/en-us/previous-versions/azure/virtual-machines/linux/configure-lvm) on Linux VMs in Azure.
+ 
+- Now compare two recommendations for Server3 on lines 32 (name = Standard_M192is_v2) and 33 (name = Standard_M208ms_v2). Why do you think there are no managed disk recommendations for the VM SKU on line 33?
 
-- Similarly, compare recommendations for Server1 on line 22 and Server2 on line 23. Why do you think OMAT recommends Premium v1 P20 SKU for the first one but Premium v1 P15 for the second?
+- Similarly, compare recommendations for Server1 on line 22 and Server2 on line 23. Why do you think OMAT recommends Premium v1 P20 SKU for the first one but Premium v1 P15 for the second? Please note that the default OMAT recommendations are based on least-expensive options. You can clear the filter on "Best Practices Only" and select "All Others", select different disk options according to the customer's requirements. For example customer may choose to stripe fewer but larger premium SSD disks to reduce operational complexity. The tool would provide recommended disks that fit the workload requirements in terms of IOPS and throughput.  
 
 - For each managed disk option, following metadata is provided
   - #Disks: Total # of disks required. Note that this number cannot be larger than max # of disks supported by the VM SKU.
@@ -272,7 +276,7 @@ Once you created the Excel file, you can work with the file offline to generate 
 
 ## Scenario 4: Fine tune recommendations by changing search range
 
-- You must have noticed that OMAT recommends VMs across a range of vCPUs and memory. But how does he know which VM to recommend?
+- You must have noticed that OMAT recommends VMs across a range of vCPUs and memory. But how does the tool knows which VM to recommend?
 
 - OMAT uses a search algorithm to find the best VM and storage options for the given requirements. This search algorithm is based on the following settings in "Settings" sheet.
 
