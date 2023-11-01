@@ -125,5 +125,6 @@ Output similar to above should be displayed. This means that Data guard has been
 ## Scenarios
 
 Following are instructions for testing switchover, failover capabilities
-[Scenarios]('./scenarios.md')
+
+[Scenarios]('/scenarios.md')
 
