@@ -58,7 +58,8 @@ A switchover is a role reversal between the primary database and one of its stan
 
 ### Verify if the Standby database is ready for switch over
 
-In the same DGMGRL
+In the same DGMGRL session, run a 'validate database' command on the secondary DB. 
+
 ```powershell
 DGMGRL> validate database oradb02;
 
