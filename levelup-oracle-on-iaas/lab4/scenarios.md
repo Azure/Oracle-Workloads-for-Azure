@@ -292,9 +292,9 @@ Reinstatement of database "oradb01" succeeded
 [oracle@observer ~]$
 ```
 
-## Reverse roles again, to test Transparent Applciation failover
+## Reverse roles again, to test Transparent Application failover
 
-Connect to Data guard command line utility on the observer, and switch back to oradb01.
+Connect to DGMGRL on the observer with the Primary SID, and switch back to oradb01.
 
 ```powershell
 [oracle@observer ~]$ dgmgrl sys/oracleA1@oradb01_dgmgrl
@@ -378,7 +378,7 @@ TS$                                      COL$
 …
 ```
 
-Simultaneously login to the Observer, sudo to Oracle account,  connect to Data guard command line to the Standby SID.
+Simultaneously login to the Observer, sudo to Oracle account,  connect DGMGRL to the Standby SID.
 
 ```powershell
 $ ssh <adminusername>@<observerip>
