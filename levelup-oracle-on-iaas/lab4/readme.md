@@ -122,5 +122,9 @@ DGMGRL>
 
 Output similar to above should be displayed. This means that Data guard has been deployed, with Fast-start Failover enabled and set to Maximum availability.
 
+## Scenarios
 
+Following are instructions for testing switchover, failover capabilities
+
+[Scenarios](scenarios.md)
 
