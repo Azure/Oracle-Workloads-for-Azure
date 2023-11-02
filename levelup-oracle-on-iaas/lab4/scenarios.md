@@ -14,7 +14,7 @@ Last login: Sat Oct 14 15:10:51 UTC 2023 on pts/0
 [oracle@observer ~]$ export ORACLE_SID=oradb01_dgmgrl
 ```
 
-### Launch the Data guard managmeent command line utility 
+### Launch the Data guard managment command line utility (DGMGRL) with Primary SID
 
 ```powershell
 [oracle@observer ~]$ dgmgrl sys/oracleA1@oradb01_dgmgrl
@@ -54,8 +54,11 @@ The output should be similar to the above, with FSFO setup and Protection mode i
 
 A switchover is a role reversal between the primary database and one of its standby databases. A switchover guarantees no data loss and is typically done for planned maintenance of the primary system. During a switchover, the primary database transitions to a standby role, and the standby database transitions to the primary role. 
 
+[Oracle documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html#GUID-7F6C5802-E4AF-4680-91F6-AD380679A555)
+
 ### Verify if the Standby database is ready for switch over
 
+In the same DGMGRL
 ```powershell
 DGMGRL> validate database oradb02;
 
@@ -135,6 +138,30 @@ DGMGRL>
 
 ## Initiate a (controlled) failover to Secondary through Data Guard command line 
 
+A failover is a role transition in which one of the standby databases is transitioned to the primary role after the primary database (all instances in the case of an Oracle RAC database) fails or has become unreachable. A failover may or may not result in data loss depending on the protection mode in effect at the time of the failover. 
+
+[Oracle documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/dgbkr/using-data-guard-broker-to-manage-switchovers-failovers.html#GUID-7F6C5802-E4AF-4680-91F6-AD380679A555)
+
+Login to the Observer, sudo to Oracle account,  connect to Data guard command line to the Standby SID.
+
+```powershell
+$ ssh <adminusername>@<observerip>
+Enter passphrase for key '/home/<adminusername>/.ssh/id_rsa':
+Last login: Sun Oct 15 11:15:37 2023 from 49.204.116.157
+[<adminusername>@observer ~]$ sudo su - oracle
+Last login: Sun Oct 15 11:15:42 UTC 2023 on pts/0
+[oracle@observer ~]$ dgmgrl sys/oracleA1@oradb02_dgmgrl
+DGMGRL for Linux: Release 19.0.0.0.0 - Production on Sun Oct 15 13:24:18 2023
+Version 19.3.0.0.0
+
+Copyright (c) 1982, 2019, Oracle and/or its affiliates.  All rights reserved.
+
+Welcome to DGMGRL, type "help" for information.
+Connected to "oradb02"
+Connected as SYSDBA.
+DGMGRL>
+```
+
 Prepare for failover by checking configuration.
 Do a Complete manual failover (controlled way)
 
@@ -184,7 +211,7 @@ DGMGRL>
 ```
 ## Reinstate the old Primary, so that it can act as Standby
 
-Try reinstating the Old Primary.  It would fail, because the old Primary DB is in shutdown state.
+In the same DGMGRL session, try reinstating the Old Primary.  It would fail, because the old Primary DB is in shutdown state.
 
 ```powershell
 DGMGRL> reinstate database oradb01;
@@ -197,7 +224,7 @@ DGMGRL>
 ```
 ### How to reinstate the old Primary
 
-Login to the Primary node, and startup the primary database
+Login to the Primary node, sudo into Oracle account, and startup the primary database
 
 ```powershell
 [adminusername@primary ~]$ sudo su - oracle
@@ -227,7 +254,7 @@ SQL>
 
 ## Display the configuration again, to verify status of Primary and Secondary
 
-In the DGMGRL session in observer, test the configuration.  The old Primary is automatically reinstated as StandBy, due to FSFO.
+In the DGMGRL session in observer, test the configuration.  The old Primary is automatically reinstated as StandBy, due to FSFO. It may take 30-60 seconds for reinstatement.
 
 ```powershell
 DGMGRL> show configuration ;
@@ -265,9 +292,39 @@ Reinstatement of database "oradb01" succeeded
 [oracle@observer ~]$
 ```
 
-## Testing Transparent application failover
+## Reverse roles again, to test Transparent Applciation failover
 
-Login to the Primary, connect SQLPlus with the TAF network name
+Connect to Data guard command line utility on the observer, and switch back to oradb01.
+
+```powershell
+[oracle@observer ~]$ dgmgrl sys/oracleA1@oradb01_dgmgrl
+DGMGRL for Linux: Release 19.0.0.0.0 - Production on Thu Nov 2 04:34:01 2023
+Version 19.3.0.0.0
+
+Copyright (c) 1982, 2019, Oracle and/or its affiliates.  All rights reserved.
+
+Welcome to DGMGRL, type "help" for information.
+Connected to "oradb01"
+Connected as SYSDBA.
+DGMGRL> switchover to oradb01;
+Performing switchover NOW, please wait...
+New primary database "oradb01" is opening...
+Operation requires start up of instance "oradb02" on database "oradb02"
+Starting instance "oradb02"...
+Connected to an idle instance.
+ORACLE instance started.
+Connected to "oradb02"
+Database mounted.
+Database opened.
+Connected to "oradb02"
+Switchover succeeded, new primary is "oradb01"
+DGMGRL>
+```
+The roles now have been reverted to initial state - oradb01 is Primary and oradb02 is secondary.
+
+## Testing Transparent application failover(TAF)
+
+Login to the Primary, connect SQLPlus with the TAF TNS network name
 
 ```powershell
 oracle@primary ~]$ sqlplus sys/oracleA1@oradb01_taf as sysdba
@@ -284,6 +341,19 @@ Version 19.3.0.0.0
 
 SQL>
 ```
+
+Verify which DB instance is the client connected to.
+
+```powershell
+SQL> select instance_name from v$instance;
+
+INSTANCE_NAME
+----------------
+oradb01
+
+SQL>
+```
+
 Run a long-running SELECT query, a sample is a cartesian join of a large table.  This will run at least for a minute.
 
 ```powershell
@@ -327,6 +397,23 @@ Connected to "oradb02"
 Connected as SYSDBA.
 DGMGRL>
 ```
+In the same session, initiate a Switchover to secondary DB.  While the switchover completes, the SELECT query in the other session should continue to run.
+
+```powershell
+DGMGRL> switchover to oradb02;
+Performing switchover NOW, please wait...
+New primary database "oradb02" is opening...
+Operation requires start up of instance "oradb01" on database "oradb01"
+Starting instance "oradb01"...
+Connected to an idle instance.
+ORACLE instance started.
+Connected to "oradb01"
+Database mounted.
+Database opened.
+Connected to "oradb01"
+Switchover succeeded, new primary is "oradb02"
+DGMGRL>
+```
 
 After the SELECT query has completed (Ctrl-C to break), check the instance connected to in the same session. It must be the Secondary.
 
@@ -345,3 +432,10 @@ SQL>
 
 The above SQL command shows that the client is now connected to the Standby instance.
 
+## Lab cleanup
+
+Deleting the resource group is sufficient
+
+```powershell
+az group delete oragroup --no-wait --yes
+```
