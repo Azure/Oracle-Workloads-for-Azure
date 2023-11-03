@@ -19,17 +19,7 @@ rg-oracle-demo-eastus-001
 
 <br>
 
-
-If you are using Azure Cloud Shell, you can create an inbound NSG rule as the following:
-
-<img src="../media/ssh-for-cloud-shell.jpg" />
-
-<br>
-
-You can also choose to [enable Just-in-Time access for the VM](https://learn.microsoft.com/en-us/azure/defender-for-cloud/just-in-time-access-usage) 
-<br>
-
-If you are using a Microsoft tenancy in Azure, then you MUST do the following:
+**If you are using a Microsoft tenancy in Azure, then you MUST do the following:**
 
 
 3.1-	Set the SSH port using the Run Command in the VM Operations -> Run Command with:
@@ -38,13 +28,40 @@ echo "Port 2222" >> /etc/ssh/sshd_config
 <br>
 systemctl restart sshd
 
-3.2-	Update the Blank NSG firewall rule to use port 2222 instead of 22 for SSH
-
+<br>
+<img src="../media/run_command1.png" />
 
 <br>
+<img src="../media/run_command2.png" />
+
+<br>
+
+3.2-	Update the Blank NSG firewall rule to use port 2222 instead of 22 for SSH
+
+<br>
+<img src="../media/port2222.png" />
+<br>
+<br>
+<br>
+
+
+
+If you are using Azure Cloud Shell and not Microsoft tenancy<br>, you can create an inbound NSG rule as the following:
+
+<img src="../media/ssh-for-cloud-shell.jpg" />
+
+<br>
+
+You can also choose to [enable Just-in-Time access for the VM](https://learn.microsoft.com/en-us/azure/defender-for-cloud/just-in-time-access-usage) 
+<br>
+<br>
+
+
 4. Copy the public IP address of the VM to use in the future steps. An example is given below.
 
 <img src="../media/publicip.jpg" />
 
-
+<br>
+<br>
+<br>
 4. Now you can go back to the main [README.md](../../README.md#step-by-step-instructions) file.
