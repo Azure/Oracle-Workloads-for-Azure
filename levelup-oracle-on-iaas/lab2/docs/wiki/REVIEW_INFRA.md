@@ -6,17 +6,19 @@
 ```
 rg-oracle-demo-eastus-001
 ``````
+<br>
 
 2. In the resource group you will find a VM called "vm-0":
 
 <img src="../media/provisioned.jpg" />
 
+<br>
 
 3. Check the networking for the Azure VM and ensure that the "ssh" port is allowed:
 
 <img src="../media/sshport.jpg" />
 
-
+<br>
 <br>
 
 **If you are using a Microsoft tenancy in Azure, then you MUST do the following:**
@@ -46,22 +48,28 @@ systemctl restart sshd
 
 
 
-If you are using Azure Cloud Shell and not Microsoft tenancy<br>, you can create an inbound NSG rule as the following:
+**However, if you are using Azure Cloud Shell without Microsoft tenancy**, you  have two options:
+
+(option 1) You can create an inbound NSG rule as the following:
 
 <img src="../media/ssh-for-cloud-shell.jpg" />
 
 <br>
+<br>
 
-You can also choose to [enable Just-in-Time access for the VM](https://learn.microsoft.com/en-us/azure/defender-for-cloud/just-in-time-access-usage) 
+
+(option 2) You can also choose to [enable Just-in-Time access for the VM](https://learn.microsoft.com/en-us/azure/defender-for-cloud/just-in-time-access-usage) . 
+
 <br>
 <br>
 
 
-4. Copy the public IP address of the VM to use in the future steps. An example is given below.
+4. Finally, copy the public IP address of the VM to use in the future steps. An example is given below.
 
 <img src="../media/publicip.jpg" />
 
 <br>
 <br>
 <br>
-4. Now you can go back to the main [README.md](../../README.md#step-by-step-instructions) file.
+
+5. Now you can go back to the main [README.md](../../README.md#step-by-step-instructions) file.
