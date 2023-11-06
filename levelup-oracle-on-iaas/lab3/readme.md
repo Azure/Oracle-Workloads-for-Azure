@@ -65,7 +65,7 @@ file share.
 
 <!-- -->
 
-    ssh azureuser@<publicIpAddress>
+    ssh -i ~/.ssh/lza-oracle-single-instance oracle@<publicIpAddress>
 
 2.  Switch to root user:
 
@@ -207,7 +207,7 @@ alt="A screenshot of a computer Description automatically generated" />
 
 <!-- -->
 
-    sudo bash -c ‘echo <storage account name>.file.core.windows.net:/<storage account name>/<File share name> /mnt/orabackup nfs -o vers=4,minorversion=1,sec=sys 0 0
+    sudo bash -c 'echo "<storage account name>.file.core.windows.net:/<storage account name>/<File share name> /mnt/orabackup nfs vers=4,minorversion=1,sec=sys    0 0" >> /etc/fstab'
 
 5.  Check that the file share is mounted properly by using the following
     command:
@@ -380,7 +380,7 @@ If it's in `NOARCHIVELOG` mode, run the following commands:
 
     sudo ls -lrt /mnt/orabackup/oratest1
 
-12. The result should look like this:
+12. The result should look like this (note that in your lab, since database is not operational, you will see the first file after 5 minutes):
 
 <!-- -->
 
@@ -500,7 +500,7 @@ represents the Oracle `SYSBACKUP` role first.
 
 <!-- -->
 
-    export ORACLE_SID=oratest1
+    export ORACLE_SID=orcl
     export ORAENV_ASK=NO
     . oraenv
 
@@ -603,9 +603,9 @@ database username prefix:
 
 <!-- -->
 
-    mv $ORACLE_HOME/dbs/orapworatest1 $ORACLE_HOME/dbs/orapworatest1.tmp
-    orapwd file=$ORACLE_HOME/dbs/orapworatest1 input_file=$ORACLE_HOME/dbs/orapworatest1.tmp
-    rm $ORACLE_HOME/dbs/orapworatest1.tmp
+    mv $ORACLE_HOME/dbs/orapworcl $ORACLE_HOME/dbs/orapworcl.tmp
+    orapwd file=$ORACLE_HOME/dbs/orapworcl input_file=$ORACLE_HOME/dbs/orapworcl.tmp
+    rm $ORACLE_HOME/dbs/orapworcl.tmp
 
 6.  Rerun the GRANT operation in SQL Plus.
 
@@ -743,14 +743,23 @@ Azure portal
 <!-- -->
 
     az backup protection backup-now \
-       --resource-group <RG NAME>\
+       --resource-group <RG NAME> \
        --vault-name myVault \
        --backup-management-type AzureIaasVM \
-       --container-name vmoracle19c \
-       --item-name vmoracle19c 
+       --container-name vm-0 \
+       --item-name vm-0 
 
 4.  Monitor the progress of the backup job by
     using `az backup job list` `and az backup job show`.
+
+   az backup job list \
+       --resource-group <RG NAME> \
+       --vault-name myVault    
+
+   az backup job show \
+       --resource-group <RG NAME> \
+       --vault-name myVault \
+       --name <backup job name from az backup job list command>
 
 ## Restore the VM
 
@@ -801,7 +810,7 @@ style="width:6.26042in;height:2.34375in" />
     4.  Virtual Network and Subnet
 
 > ***Note:** Recommended to use the same Vnet and subnet as the Premium
-> File Share’s firewall is already configured for this Vnet/Subnet.
+> File Share’s firewall is already configured for this Vnet/Subnet.  
 > Otherwise, you can create or select another Vnet/Subnet but make sure
 > to configure the File Share Storage Account’s firewall accordingly.*
 
@@ -822,7 +831,7 @@ In the next and final step you will recover the database.
 
 <!-- -->
 
-    ssh azureuser@<publicIpAddress>
+    ssh -i ~/.ssh/lza-oracle-single-instance oracle@<publicIpAddress>
 
 > **Note:** The Username/password(or ssh key) is the same as the
 > original VM.
