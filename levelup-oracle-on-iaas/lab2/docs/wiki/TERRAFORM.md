@@ -71,7 +71,7 @@ terraform apply -var-file=fixtures.tfvars
 
 (When prompted for "Enter a value:" , type in "yes" and press Enter)
 
-(If using Azure Cloud Shell, remember to refresh your browser by scrolling up or down, every 15 minutes or so since the shell times out after 20 minutes of inaction.)
+(If using Azure Cloud Shell, remember to activate the Cloud Shell window by pressing Enter as few times, every 15 minutes or so since the shell times out after 20 minutes of inaction.)
 
 
 5. (OPTIONAL) Finally, you can connect to the virtual machine with ssh private key. While deploying resources, a public ip address is generated and attached to the virtual machine, so that you can connect to the virtual machine with this IP address. The username is `oracle`, which is fixed in `terraform/bootstrap/single_instance/module.tf`.
