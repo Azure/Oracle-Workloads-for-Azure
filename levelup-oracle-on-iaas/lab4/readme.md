@@ -36,7 +36,8 @@ This template deploys the following resources:
 
 - A valid Azure subscription with at least contributor privileges
 - Quota available for atleast 10 vCPUs (4 each for Primary and secondary, 2 for Observer) in the selected azure region. The default VM SKU is Standard_D4ds_v5 for Primary/Secondary, and Standard_D2ds_v5 for observer. Any other General purpose series of similar configuration can be substituted - such as Ddsv4, Dasv4 or Dasv5
-- Latest Azure CLI installed 
+- Latest Azure CLI installed
+- Bicep CLI 0.14.85 or later (upgrade with "az bicep upgrade")
 - A valid ssh key pair. https://learn.microsoft.com/en-us/azure/virtual-machines/linux/mac-create-ssh-keys 
 
 ## How to deploy the template 
@@ -47,7 +48,7 @@ This template deploys the following resources:
 git clone https://github.com/Azure/Oracle-Workloads-for-Azure.git 
 ```
 
-- Modify the main.bicepparam file, with admin username for the Oracle VM, and the ssh public key. The public key should be in ~/.ssh/id_rsa.pub by default.
+- Modify the main.bicepparam file and update adminusername for the Oracle VM, and the ssh public key. The public key should be in ~/.ssh/id_rsa.pub by default.
 
 - If the VM size needs to be customized, add a parameter for VMsize in main.bicepparam. example:
 
