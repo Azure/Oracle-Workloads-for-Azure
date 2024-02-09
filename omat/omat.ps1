@@ -52,9 +52,9 @@ function ConvertNumberOrDefault {
         [string]$textToConvert,
         [decimal]$defaultValue
     )
-    [decimal]$parsedNumber=0
-    [bool]$result=[decimal]::TryParse($textToConvert, [ref]$parsedNumber)
-    if($result -eq $true)
+    [decimal]$parsedNumber=$textToConvert -as [Decimal]
+    
+    if($null -ne $parsedNumber)
     {
         return $parsedNumber
     }
@@ -120,7 +120,7 @@ function ParseSkuSizeString([string]$size){
 	return $obj
 }
 
-function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
+function ParseAWR_Normal([object]$html, [string]$awrReportFileName, [bool]$isMultiTenantDb){
     #first find the release
     $firstTable=$html.body.getElementsByTagName('table')[0]
     $releaseNumber=""
@@ -170,15 +170,34 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
     }
     $awrObj=New-Object -TypeName PSCustomObject -Property $objectProps #this is to provide ordered list of object properties
 
-    if($releaseNumber -like "10*")
+    $versionArray = $releaseNumber.Split(".")
+    $releaseVersion =  [Version]::new( (&{If([String]::IsNullOrEmpty($versionArray[0])) {-1} Else {$versionArray[0]}}),
+                                       (&{If([String]::IsNullOrEmpty($versionArray[1])) {-1} Else {$versionArray[1]}}),
+                                       (&{If([String]::IsNullOrEmpty($versionArray[2])) {-1} Else {$versionArray[2]}}),
+                                       (&{If([String]::IsNullOrEmpty($versionArray[3])) {-1} Else {$versionArray[3]}})
+                                    )
+    $releaseVersion_11 =  [Version]::new(11,0) 
+    $releaseVersion_11_2_0_4 =  [Version]::new(11,2,0,4) 
+    $releaseVersion_13 =  [Version]::new(13,0) 
+    #if($releaseNumber -like "10*")
+    if($releaseVersion -lt $releaseVersion_11_2_0_4)
     {
         $tables=$html.body.getElementsByTagName('table')
         $awrObj.InstanceIndex=$tables[0].rows[1].cells[3].InnerText
         $awrObj.DBName       =$tables[0].rows[1].cells[0].InnerText
         $awrObj.InstanceName =$tables[0].rows[1].cells[2].InnerText
-        $awrObj.HostName     =$tables[0].rows[1].cells[6].InnerText
 
-        $tblSnapshot = $tables[1]
+        if($releaseVersion -lt $releaseVersion_11)
+            {$awrObj.HostName     =$tables[0].rows[1].cells[6].InnerText}
+        else
+            {$awrObj.HostName     =$tables[1].rows[1].cells[0].InnerText}
+
+        if($releaseVersion -lt $releaseVersion_11)
+            {$snapshotTableOffset=1}
+        else
+            {$snapshotTableOffset=2}
+
+        $tblSnapshot = $tables[$snapshotTableOffset]
         if ($tblSnapshot)
         {
             $offset=FirstLineOffset($tblSnapshot)
@@ -222,11 +241,23 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
             Write-Host "HTML table cannot be found (Headers: Statistic Name,Time (s),% of DB Time) while processing file `"$awrReportFileName`"" -ForegroundColor Red
         }
 
-        $tblOSStats=$html.body.getElementsByTagName('table') | Where-Object {
-            $cells = $_.tBodies[0].rows[0].cells
-            $cells[0].innerText -eq "Statistic" -and
-            $cells[1].innerText -eq "Total" -and 
-            $cells.Length -eq 2
+        if($releaseVersion -lt $releaseVersion_11)
+        {
+            $tblOSStats=$html.body.getElementsByTagName('table') | Where-Object {
+                $cells = $_.tBodies[0].rows[0].cells
+                $cells[0].innerText -eq "Statistic" -and
+                $cells[1].innerText -eq "Total" -and 
+                $cells.Length -eq 2
+            }
+        }
+        else {
+            $tblOSStats=$html.body.getElementsByTagName('table') | Where-Object {
+                $cells = $_.tBodies[0].rows[0].cells
+                $cells[0].innerText -eq "Statistic" -and
+                $cells[1].innerText -eq "Value" -and 
+                $cells[2].innerText -eq "End Value" -and 
+                $cells.Length -eq 3
+            }
         }
 
         if ($tblOSStats)
@@ -243,11 +274,11 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
                     $awrObj.Memory= ConvertNumberOrDefault $tblOSStats.rows[$i+$offset].cells[1].InnerText 0
                     $awrObj.Memory/=1024*1024*1024
                 }
-                elseif($tblOSStats.rows[$i+$offset].cells[0].InnerText -like "NUM_CPUS")
+                elseif($tblOSStats.rows[$i+$offset].cells[0].InnerText -like "NUM_CPU_CORES")
                 {
                     $awrObj.Cores= ConvertNumberOrDefault $tblOSStats.rows[$i+$offset].cells[1].InnerText 0
                 }
-                elseif($tblOSStats.rows[$i+$offset].cells[0].InnerText -like "NUM_CPU_SOCKETS")
+                elseif($tblOSStats.rows[$i+$offset].cells[0].InnerText -like "NUM_CPUS")
                 {
                     $awrObj.CPUs= ConvertNumberOrDefault $tblOSStats.rows[$i+$offset].cells[1].InnerText 0
                 }
@@ -270,40 +301,85 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
                 }
                 
             }
+
+            if($awrObj.Cores -le 0)
+            {
+                $awrObj.Cores=$awrObj.CPUs
+            }
         }
         else{
             Write-Host "HTML table cannot be found (Headers: Statistic,Total) while processing file `"$awrReportFileName`"" -ForegroundColor Red
         }
 
-        $tblInitOraParameters=$html.body.getElementsByTagName('table') | Where-Object {
-            $cells = $_.tBodies[0].rows[0].cells
-            $cells[0].innerText -eq "Parameter Name" -and
-            $cells[1].innerText -eq "Begin value" -and
-            $cells[2].innerText -eq "End value (if different)" -and 
-            $cells.Length -eq 3
-        }
-
-        if ($tblInitOraParameters)
+        if($releaseVersion -lt $releaseVersion_11)
         {
-            $offset=FirstLineOffset($tblInitOraParameters)
+            $tblInitOraParameters=$html.body.getElementsByTagName('table') | Where-Object {
+                $cells = $_.tBodies[0].rows[0].cells
+                $cells[0].innerText -eq "Parameter Name" -and
+                $cells[1].innerText -eq "Begin value" -and
+                $cells[2].innerText -eq "End value (if different)" -and 
+                $cells.Length -eq 3
+            }
 
-            for($i=0;$i -lt $tblInitOraParameters.rows.Length-1;$i++)
+            if ($tblInitOraParameters)
             {
-                if($tblInitOraParameters.rows[$i+$offset].cells[0].InnerText -like "pga_aggregate_target")
+                $offset=FirstLineOffset($tblInitOraParameters)
+
+                for($i=0;$i -lt $tblInitOraParameters.rows.Length-1;$i++)
                 {
-                    $awrObj.PGAUse= ConvertNumberOrDefault $tblInitOraParameters.rows[$i+$offset].cells[1].InnerText 0
-                    $awrObj.PGAUse/=1024*1024
+                    if($tblInitOraParameters.rows[$i+$offset].cells[0].InnerText -like "pga_aggregate_target")
+                    {
+                        $awrObj.PGAUse= ConvertNumberOrDefault $tblInitOraParameters.rows[$i+$offset].cells[1].InnerText 0
+                        $awrObj.PGAUse/=1024*1024
+                    }
+                    elseif($tblInitOraParameters.rows[$i+$offset].cells[0].InnerText -like "sga_target")
+                    {
+                        $awrObj.SGAuse= ConvertNumberOrDefault $tblInitOraParameters.rows[$i+$offset].cells[1].InnerText 0
+                        $awrObj.SGAuse/=1024*1024
+                    }
+                    
                 }
-                elseif($tblInitOraParameters.rows[$i+$offset].cells[0].InnerText -like "sga_target")
-                {
-                    $awrObj.SGAuse= ConvertNumberOrDefault $tblInitOraParameters.rows[$i+$offset].cells[1].InnerText 0
-                    $awrObj.SGAuse/=1024*1024
-                }
-                
+            }
+            else{
+                Write-Host "HTML table cannot be found (Headers: Parameter Name,Begin value,End value (if different)) while processing file `"$awrReportFileName`"" -ForegroundColor Red
             }
         }
-        else{
-            Write-Host "HTML table cannot be found (Headers: Parameter Name,Begin value,End value (if different)) while processing file `"$awrReportFileName`"" -ForegroundColor Red
+        else {
+            $tblMemoryStatistics=$html.body.getElementsByTagName('table') | Where-Object {
+                $cells = $_.tBodies[0].rows[0].cells
+                [String]::IsNullOrEmpty($cells[0].innerText) -and
+                $cells[1].innerText -eq "Begin" -and
+                $cells[2].innerText -eq "End" -and 
+                $_.tBodies[0].rows.Length -gt 1 -and
+                $_.tBodies[0].rows[1].cells[0].InnerText -like 'Host Mem*' -and
+                $cells.Length -eq 3
+            }
+            
+            if ($tblMemoryStatistics)
+            {
+                $offset=FirstLineOffset($tblMemoryStatistics)
+
+                for($i=0;$i -lt $tblMemoryStatistics.rows.Length-1;$i++)
+                {
+                    if($tblMemoryStatistics.rows[$i+$offset].cells[0].InnerText -like "PGA use*")
+                    {
+                        $awrObj.PGAUse= ConvertNumberOrDefault $tblMemoryStatistics.rows[$i+$offset].cells[2].InnerText 0
+                        if($awrObj.PGAUse -le 0)
+                        {$awrObj.PGAUse= ConvertNumberOrDefault $tblMemoryStatistics.rows[$i+$offset].cells[1].InnerText 0}
+                        $awrObj.PGAUse/=1024
+                    }
+                    elseif($tblMemoryStatistics.rows[$i+$offset].cells[0].InnerText -like "SGA use*")
+                    {
+                        $awrObj.SGAuse= ConvertNumberOrDefault $tblMemoryStatistics.rows[$i+$offset].cells[2].InnerText 0
+                        if($awrObj.SGAUse -le 0)
+                        {$awrObj.SGAuse= ConvertNumberOrDefault $tblMemoryStatistics.rows[$i+$offset].cells[1].InnerText 0}
+                        $awrObj.SGAuse/=1024
+                    }
+                }
+            }
+            else{
+                Write-Host "HTML table cannot be found (Headers: <empty>,Begin,End / Row[1].Cells[0]: 'Host Mem') while processing file `"$awrReportFileName`"" -ForegroundColor Red
+            }
         }
 
         $tblInstanceActivityStats=$html.body.getElementsByTagName('table') | Where-Object {
@@ -347,13 +423,15 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
             Write-Host "HTML table cannot be found (Headers: Statistic,Total,per Second,per Trans) while processing file `"$awrReportFileName`"" -ForegroundColor Red
         }
     }
-    elseif(($releaseNumber -like "1*") -or ($releaseNumber -like "2*"))
+    #elseif(($releaseNumber -like "1*") -or ($releaseNumber -like "2*"))
+    elseif($releaseVersion -ge $releaseVersion_11_2_0_4)
     {
         $tblDBInstance=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*database instance information'} 
 
         if ($tblDBInstance)
         {
-            if(($releaseNumber -like "11*") -or ($releaseNumber -like "12.1*"))
+            #if(($releaseNumber -like "11*") -or ($releaseNumber -like "12.1*"))
+            if($releaseVersion -lt $releaseVersion_13)
             {
                 $awrObj.DBName       =$tblDBInstance.rows[1].cells[0].InnerText
                 $awrObj.InstanceName =$tblDBInstance.rows[1].cells[2].InnerText
@@ -427,43 +505,81 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName){
             Write-Host "HTML table cannot be found summary=`"*time model statistics*`" while processing file `"$awrReportFileName`"" -ForegroundColor Red
         }
 
-        $tblHostCPU=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*CPU usage and wait statistics'} 
-
-        if ($tblHostCPU)
+        if(-not $isMultiTenantDb)
         {
-            $offset=FirstLineOffset($tblHostCPU)
-            $awrObj.BusyCPU=ConvertNumberOrDefault $tblHostCPU.rows[$offset].cells[1].InnerText 0 
-            $awrObj.BusyCPU/=100
-        }
-        else {
-            Write-Host "HTML table cannot be found summary=`"*CPU usage and wait statistics`" while processing file `"$awrReportFileName`"" -ForegroundColor Red
-        }
-    
+            $tblHostCPU=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*CPU usage and wait statistics'} 
 
-        $tblMemoryStats=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*memory statistics'} 
-
-        if ($tblMemoryStats)
-        {
-            $offset=FirstLineOffset($tblMemoryStats)
-
-            for($i=0;$i -lt $tblMemoryStats.rows.Length-1;$i++)
+            if ($tblHostCPU)
             {
-                if($tblMemoryStats.rows[$i+$offset].cells[0].InnerText -like "SGA use (MB)*")
-                {
-                    $begin=ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[1].InnerText 0
-                    $end  =ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[2].InnerText 0
-                    $awrObj.SGAUse= [double]([Math]::Max($begin, $end))
-                }
-                elseif($tblMemoryStats.rows[$i+$offset].cells[0].InnerText -like "PGA use (MB)*")
-                {
-                    $begin=ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[1].InnerText 0
-                    $end  =ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[2].InnerText 0
-                    $awrObj.PGAUse= [double]([Math]::Max($begin, $end))
-                }
+                $offset=FirstLineOffset($tblHostCPU)
+                $awrObj.BusyCPU=ConvertNumberOrDefault $tblHostCPU.rows[$offset].cells[1].InnerText 0 
+                $awrObj.BusyCPU/=100
+            }
+            else {
+                Write-Host "HTML table cannot be found summary=`"*CPU usage and wait statistics`" while processing file `"$awrReportFileName`"" -ForegroundColor Red
             }
         }
         else {
-            Write-Host "HTML table cannot be found summary=`"*memory statistics`" while processing file `"$awrReportFileName`"" -ForegroundColor Red
+            $awrObj.BusyCPU=((($awrObj.CPUs * $awrObj.ElapsedTime * 60)-$awrObj.DBCPU)/$awrObj.DBCPU)/100
+        }
+    
+
+        if(-not $isMultiTenantDb)
+        {
+            $tblMemoryStats=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*memory statistics'} 
+
+            if ($tblMemoryStats)
+            {
+                $offset=FirstLineOffset($tblMemoryStats)
+
+                for($i=0;$i -lt $tblMemoryStats.rows.Length-1;$i++)
+                {
+                    if($tblMemoryStats.rows[$i+$offset].cells[0].InnerText -like "SGA use (MB)*")
+                    {
+                        $begin=ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[1].InnerText 0
+                        $end  =ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[2].InnerText 0
+                        $awrObj.SGAUse= [double]([Math]::Max($begin, $end))
+                    }
+                    elseif($tblMemoryStats.rows[$i+$offset].cells[0].InnerText -like "PGA use (MB)*")
+                    {
+                        $begin=ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[1].InnerText 0
+                        $end  =ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[2].InnerText 0
+                        $awrObj.PGAUse= [double]([Math]::Max($begin, $end))
+                    }
+                }
+            }
+            else {
+                Write-Host "HTML table cannot be found summary=`"*memory statistics`" while processing file `"$awrReportFileName`"" -ForegroundColor Red
+            }
+        }
+        else {
+            $tblMemoryStats=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*database resource limits'} 
+
+            if ($tblMemoryStats)
+            {
+                $offset=FirstLineOffset($tblMemoryStats)
+
+                for($i=0;$i -lt $tblMemoryStats.rows.Length-1;$i++)
+                {
+                    if($tblMemoryStats.rows[$i+$offset].cells[0].InnerText -like "SGA Target*")
+                    {
+                        $begin=ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[1].InnerText 0
+                        $end  =ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[2].InnerText 0
+                        $awrObj.SGAUse= [double]([Math]::Max($begin, $end))
+                        $awrObj.SGAUse=$awrObj.SGAUse/1024/1024
+                    }
+                    elseif($tblMemoryStats.rows[$i+$offset].cells[0].InnerText -like "PGA Target*")
+                    {
+                        $begin=ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[1].InnerText 0
+                        $end  =ConvertNumberOrDefault $tblMemoryStats.rows[$i+$offset].cells[2].InnerText 0
+                        $awrObj.PGAUse= [double]([Math]::Max($begin, $end))
+                        $awrObj.PGAUse=$awrObj.PGAUse/1024/1024
+                    }
+                }
+            }
+            else {
+                Write-Host "HTML table cannot be found summary=`"*memory statistics`" while processing file `"$awrReportFileName`"" -ForegroundColor Red
+            }
         }
 
         $tblIOStats=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*IO Statistics for different file types*'} 
@@ -743,12 +859,15 @@ function ProcessAWRReport {
             }
             
             $awrData = $null
-            if ($htmlHeader[0].InnerText.Trim() -ieq $global:AWRRACReportTitle)
+            if ($htmlHeader[0].InnerText.Trim().StartsWith($global:AWRRACReportTitle))
             {
                 $awrData=ParseAWR_RAC $html $awrReportFileBaseName
             }
             elseif ($htmlHeader[0].InnerText.Trim() -ieq $global:AWRNormalReportTitle) {
-                $awrData=ParseAWR_Normal $html $awrReportFileBaseName
+                $awrData=ParseAWR_Normal $html $awrReportFileBaseName $false
+            }
+            elseif ($htmlHeader[0].InnerText.Trim() -ieq $global:AWRPDBReportTitle) {
+                $awrData=ParseAWR_Normal $html $awrReportFileBaseName $true
             }
             else
             {
@@ -1182,8 +1301,8 @@ function ExportToExcel(){
         } 
         
 
-        $MaxESeriesVersion=($azureVMSkus | Where-Object Class -eq 'E' | Measure-Object Version -Maximum).Maximum
-        $MaxMSeriesVersion=($azureVMSkus | Where-Object Class -eq 'M' | Measure-Object Version -Maximum).Maximum
+        # $MaxESeriesVersion=($azureVMSkus | Where-Object Class -eq 'E' | Measure-Object Version -Maximum).Maximum
+        # $MaxMSeriesVersion=($azureVMSkus | Where-Object Class -eq 'M' | Measure-Object Version -Maximum).Maximum
         
         foreach($obj in $azureVMSkus)
         {
@@ -1191,8 +1310,14 @@ function ExportToExcel(){
             ($obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
-                if (($obj.Version -eq $MaxESeriesVersion) -or
-                    (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxESeriesVersion" }).Length -eq 0)))
+                # if (($obj.Version -eq $MaxESeriesVersion) -or
+                #     (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxESeriesVersion" }).Length -eq 0)))
+                if (($obj.Version -eq ($azureVMSkus | Where-Object {($_.Class -eq $obj.Class) -and ($_.vCPUs -eq $obj.vCPUs)} | Measure-Object Version -Maximum).Maximum) -or
+                (($azureVMSkus | Where-Object {
+                    ($_.Version -gt $obj.Version) -and ($_.Class -eq $obj.Class) -and 
+                    ($_.vCPUs -eq $obj.vCPUs) -and (-not $_.BlockStoragePerformance) -and 
+                    (-not $_.ARMProcessor) -and (-not $_.LowMemory) -and 
+                    (-not $_.TinyMemory) -and ($_.PremiumIO -ieq "True") }).Length -eq 0))
                 {
                     $obj.vmRecommendationPriority=$global:RecommendationPriority_BestPracticesOnly
                 }
@@ -1201,9 +1326,15 @@ function ExportToExcel(){
             (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
-                if (($obj.Version -eq $MaxMSeriesVersion) -or
-                    (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxMSeriesVersion" }).Length -eq 0)))
-                {
+                # if (($obj.Version -eq $MaxMSeriesVersion) -or
+                #     (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxMSeriesVersion" }).Length -eq 0)))
+                if (($obj.Version -eq ($azureVMSkus | Where-Object {($_.Class -eq $obj.Class) -and ($_.vCPUs -eq $obj.vCPUs)} | Measure-Object Version -Maximum).Maximum) -or
+                (($azureVMSkus | Where-Object {
+                    ($_.Version -gt $obj.Version) -and ($_.Class -eq $obj.Class) -and 
+                    ($_.vCPUs -eq $obj.vCPUs) -and (-not $_.BlockStoragePerformance) -and 
+                    (-not $_.ARMProcessor) -and (-not $_.LowMemory) -and 
+                    (-not $_.TinyMemory) -and ($_.PremiumIO -ieq "True") }).Length -eq 0))
+                    {
                     $obj.vmRecommendationPriority=$global:RecommendationPriority_BestPracticesOnly
                 }
             }
@@ -1536,6 +1667,7 @@ $global:XlYesNoGuess_xlYes=1
 [array]$global:awrDataAll=$null
 $global:AWRRACReportTitle="WORKLOAD REPOSITORY REPORT (RAC)"
 $global:AWRNormalReportTitle="WORKLOAD REPOSITORY report for"
+$global:AWRPDBReportTitle="WORKLOAD REPOSITORY PDB report (root snapshots)"
 $global:numProcessedFiles=0
 
 $global:RecommendationPriority_BestPracticesOnly="Best Practices Only"
