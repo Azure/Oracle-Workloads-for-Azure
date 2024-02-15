@@ -72,8 +72,6 @@ function ResetTable([object]$listObject){
 }
 
 function AppendRow([object]$listObject){
-    #$listObject.ListRows.Item($listObject.ListRows.Count).Range.Offset(1).EntireRow.Insert() | Out-Null
-    #if($listObject.ShowTotals -eq $False){$listObject.Resize($listObject.Range.Resize($listObject.Range.CurrentRegion.Rows.Count))}
     if ($null -eq $listObject.InsertRowRange) 
     {
         $listObject.ListRows.Item($listObject.ListRows.Count).Range.Offset(1).EntireRow.Insert() | Out-Null
@@ -179,7 +177,6 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName, [bool]$isMul
     $releaseVersion_11 =  [Version]::new(11,0) 
     $releaseVersion_11_2_0_4 =  [Version]::new(11,2,0,4) 
     $releaseVersion_13 =  [Version]::new(13,0) 
-    #if($releaseNumber -like "10*")
     if($releaseVersion -lt $releaseVersion_11_2_0_4)
     {
         $tables=$html.body.getElementsByTagName('table')
@@ -423,14 +420,12 @@ function ParseAWR_Normal([object]$html, [string]$awrReportFileName, [bool]$isMul
             Write-Host "HTML table cannot be found (Headers: Statistic,Total,per Second,per Trans) while processing file `"$awrReportFileName`"" -ForegroundColor Red
         }
     }
-    #elseif(($releaseNumber -like "1*") -or ($releaseNumber -like "2*"))
     elseif($releaseVersion -ge $releaseVersion_11_2_0_4)
     {
         $tblDBInstance=$html.body.getElementsByTagName('table') | Where {$_.summary -like '*database instance information'} 
 
         if ($tblDBInstance)
         {
-            #if(($releaseNumber -like "11*") -or ($releaseNumber -like "12.1*"))
             if($releaseVersion -lt $releaseVersion_13)
             {
                 $awrObj.DBName       =$tblDBInstance.rows[1].cells[0].InnerText
@@ -928,7 +923,6 @@ function ExportToExcel(){
         $global:awrDataAll = $global:awrDataAll | 
             Group-Object -Property InstanceIndex,Release,DBName,InstanceName,HostName | 
             ForEach-object {
-                #$elapsedTime,$dbTime,$dbCpu = ($_.Group|Measure-Object ElapsedTime,DBTime,DBCPU -Sum    ).Sum
                 $MaxAAS      =($_.Group | Select-Object @{n='AAS'           ;e={[math]::Round($_.DBTime / $_.ElapsedTime,3)}} | Measure-Object AAS -Maximum).Maximum
                 $MaxAASRow   = $_.Group | Select-Object ElapsedTime,DBTime,DBCPU,@{n='AAS'           ;e={[math]::Round($_.DBTime / $_.ElapsedTime,3)}} | Where-Object AAS -eq $MaxAAS  | Select-Object ElapsedTime,DBTime,DBCPU -First 1
                 $elapsedTime = $MaxAASRow.ElapsedTime
@@ -939,12 +933,6 @@ function ExportToExcel(){
                 $SGAUse,$PGAUse             = ($_.Group|Measure-Object SGAUse,PGAUse            -Maximum).Maximum
                 $BusyCpu, $ReadThroughput, $ReadIOPS, $WriteThroughput, $WriteIOPS = ($_.Group|Measure-Object BusyCpu, ReadThroughput, ReadIOPS, WriteThroughput, WriteIOPS -Maximum).Maximum
 
-                # $BusyCpuxElapsedTime, $ReadThroughputxElapsedTime, $ReadIOPSxElapsedTime, $WriteThroughputxElapsedTime, $WriteIOPSxElapsedTime = ($_.Group | Select-Object @{n='BusyCpuxElapsedTime'           ;e={$_.BusyCPU * $_.ElapsedTime}}, 
-                #         @{n='ReadThroughputxElapsedTime'    ;e={$_.ReadThroughput  * $_.ElapsedTime}}, 
-                #         @{n='ReadIOPSxElapsedTime'          ;e={$_.ReadIOPS        * $_.ElapsedTime}}, 
-                #         @{n='WriteThroughputxElapsedTime'   ;e={$_.WriteThroughput * $_.ElapsedTime}}, 
-                #         @{n='WriteIOPSxElapsedTime'         ;e={$_.WriteIOPS       * $_.ElapsedTime}} | 
-                #         Measure-Object BusyCpuxElapsedTime, ReadThroughputxElapsedTime, ReadIOPSxElapsedTime, WriteThroughputxElapsedTime, WriteIOPSxElapsedTime -Sum).Sum
                 $awrReportFileName=($_.Group.AWRReportFileName -join ",`n")
                 $reportType=(($_.Group.ReportType | Select-Object -Unique) -join ",")
                 [PSCustomObject]@{
@@ -960,17 +948,12 @@ function ExportToExcel(){
                     Cores        =$Cores
                     Memory       =$Memory
                     BusyCPU      =$BusyCpu
-                    #BusyCPU      =$BusyCpuxElapsedTime/$elapsedTime
                     SGAUse       =$SGAUse
                     PGAUse       =$PGAUse
                     ReadThroughput  =$ReadThroughput
                     WriteThroughput =$WriteThroughput
                     ReadIOPS        =$ReadIOPS
                     WriteIOPS       =$WriteIOPS
-                    # ReadThroughput  =$ReadThroughputxElapsedTime/$elapsedTime
-                    # WriteThroughput =$WriteThroughputxElapsedTime/$elapsedTime
-                    # ReadIOPS        =$ReadIOPSxElapsedTime/$elapsedTime
-                    # WriteIOPS       =$WriteIOPSxElapsedTime/$elapsedTime
                     TotalThroughput =0
                     TotalIOPS       =0
                     CPUTotalCapacity=0
@@ -1301,17 +1284,12 @@ function ExportToExcel(){
         } 
         
 
-        # $MaxESeriesVersion=($azureVMSkus | Where-Object Class -eq 'E' | Measure-Object Version -Maximum).Maximum
-        # $MaxMSeriesVersion=($azureVMSkus | Where-Object Class -eq 'M' | Measure-Object Version -Maximum).Maximum
-        
         foreach($obj in $azureVMSkus)
         {
             if(($obj.Class -eq 'E') -and ($obj.Subclass -ne 'C') -and 
-            ($obj.Diskful) -and (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
+            ($obj.Diskful) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
-                # if (($obj.Version -eq $MaxESeriesVersion) -or
-                #     (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxESeriesVersion" }).Length -eq 0)))
                 if (($obj.Version -eq ($azureVMSkus | Where-Object {($_.Class -eq $obj.Class) -and ($_.vCPUs -eq $obj.vCPUs)} | Measure-Object Version -Maximum).Maximum) -or
                 (($azureVMSkus | Where-Object {
                     ($_.Version -gt $obj.Version) -and ($_.Class -eq $obj.Class) -and 
@@ -1323,11 +1301,9 @@ function ExportToExcel(){
                 }
             }
             elseif(($obj.Class -eq 'M') -and 
-            (-not $obj.BlockStoragePerformance) -and (-not $obj.ARMProcessor) -and (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
+            (-not $obj.LowMemory) -and (-not $obj.TinyMemory) -and
             ($obj.PremiumIO -ieq "True"))
             {
-                # if (($obj.Version -eq $MaxMSeriesVersion) -or
-                #     (([string]::IsNullOrEmpty($obj.Version)) -and (($azureVMSkus | Where-Object {$_.size -eq "$($obj.Size)_$MaxMSeriesVersion" }).Length -eq 0)))
                 if (($obj.Version -eq ($azureVMSkus | Where-Object {($_.Class -eq $obj.Class) -and ($_.vCPUs -eq $obj.vCPUs)} | Measure-Object Version -Maximum).Maximum) -or
                 (($azureVMSkus | Where-Object {
                     ($_.Version -gt $obj.Version) -and ($_.Class -eq $obj.Class) -and 
@@ -1703,14 +1679,6 @@ if ($PSBoundParameters['Debug']) {
 [datetime]$ScriptStartAt = Get-Date
 Write-Debug "Starting..."
 Write-Debug "DebugPreference=$DebugPreference"
-
-# if ($PSVersionTable.PSVersion.Major -lt 6)
-# {
-#     Write-Host "PowerShell version 6 upwards is required. Your version is $($PSVersionTable.PSVersion)"
-#     Write-Host "Install latest LTS release from: https://aka.ms/powershell-release?tag=lts"
-#     Write-Host "Exiting."
-#     Exit
-# }
 
 if ([bool](Get-Command -Name 'az' -ErrorAction SilentlyContinue) -eq $false) { #check if azure cli is installed
     Write-Host "Azure CLI is not installed."  -ForegroundColor Red
