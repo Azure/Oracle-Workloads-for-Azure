@@ -1,0 +1,8 @@
+{
+    "experimentalFeaturesEnabled": {
+        "userDefinedTypes": true,
+        "extensibility": true,
+        "compileTimeImports": true,
+        "resourceTypedParamsAndOutputs": true
+      }
+}

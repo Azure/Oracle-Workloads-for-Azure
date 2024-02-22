@@ -1,0 +1,5 @@
+[ora-x1]
+vm-primary-0 ansible_host=51.132.246.64 ansible_ssh_private_key_file=~/.ssh/tf_ora  ansible_user=oracle
+
+[ora-x2]
+vm-secondary-0 ansible_host=51.132.246.57 ansible_ssh_private_key_file=~/.ssh/tf_ora  ansible_user=oracle
