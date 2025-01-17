@@ -2,7 +2,7 @@
 
 Oracle Migration Assistant Tool (OMAT) helps to understand resource usage on Oracle installations (on premise or in any cloud) and recommend the most suitable virtual machine that can run the same on Azure.
 
-It works by processing Advanced Workload Repository (AWR) reports collected from the source system. Required data is extracted from AWR files and placed into an Excel workbook. For more information on different sections of workbook and the algorithm behind calculations see [AWR sizing document](/az-oracle-sizing/AWR%20Sizing%20Instructions.pdf).
+It works by processing Automatic Workload Repository (AWR) reports collected from the source system. Required data is extracted from AWR files and placed into an Excel workbook. For more information on different sections of workbook and the algorithm behind calculations see [AWR sizing document](/az-oracle-sizing/AWR%20Sizing%20Instructions.pdf).
 
 OMAT essentially automates steps defined in the [AWR sizing document](/az-oracle-sizing/AWR%20Sizing%20Instructions.pdf) to speed up the process and to relieve user from complexities of interpreting the AWR report. Below are description of each step it executes and output
 
